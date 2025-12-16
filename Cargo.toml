@@ -1,0 +1,37 @@
+[package]
+name = "git-sheets"
+version = "0.1.0"
+edition = "2024"
+authors = ["Excel Sufferers United"]
+description = "Version control for spreadsheets - staging, commits, diffs for tables"
+license = "MIT"
+repository = "https://github.com/CromboJambo/git-sheets"
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# CSV parsing
+csv = "1.3"
+
+# Hashing
+sha2 = "0.10"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[[bin]]
+name = "git-sheets"
+path = "src/main.rs"
+
+[lib]
+name = "gitsheets"
+path = "src/lib.rs"
