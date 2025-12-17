@@ -1,1 +1,28 @@
-/target
+# Test data (generated during testing)
+*.csv
+!examples/*.csv  # Keep example CSVs if you add them later
+
+# Generated snapshots and diffs
+snapshots/*.toml
+diffs/*.json
+
+# But keep the directories themselves
+!snapshots/.gitkeep
+!diffs/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Rust
+target/
+Cargo.lock  # For libraries, keep it; for binaries, optional
+**/*.rs.bk
+*.pdb
