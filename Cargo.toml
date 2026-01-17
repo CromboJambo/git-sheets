@@ -6,10 +6,19 @@ license = "AGPL-3.0-or-later"
 description = "Version control for spreadsheets - staging, commits, diffs for tables"
 homepage = "https://github.com/CromboJambo"
 repository = "https://github.com/CromboJambo/git-sheets"
-authors = ["Dustin Grover <dustinjgrover@gmail.com>", "AI coding assistants such including:", "claude", "chatgpt", "gpt-oss", "devestral"]
+authors = ["Dustin Grover <dustinjgrover@gmail.com>"]
 readme = "README.md"
 keywords = ["git", "spreadsheet", "version control"]
-categories = ["development-tools", "command-line-utilities",]
+categories = ["development-tools", "command-line-utilities"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+csv = "1.4"
+toml = "0.7"
+clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.8"
