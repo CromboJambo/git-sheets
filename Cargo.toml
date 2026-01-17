@@ -8,7 +8,7 @@ homepage = "https://github.com/CromboJambo"
 repository = "https://github.com/CromboJambo/git-sheets"
 authors = ["Dustin Grover <dustinjgrover@gmail.com>"]
 readme = "README.md"
-keywords = ["git", "spreadsheet", "version control"]
+keywords = ["git", "spreadsheet", "versioning"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
