@@ -324,8 +324,6 @@ Contributions welcome. Keep it boring, safe, and user-first.
 
 ## License
 
-MIT - Use it, modify it, share it. Just keep it honest.
-
----
+AGPL 3 or later
 
 **Remember**: This isn't about making spreadsheets fancy. It's about making them *safe*.
