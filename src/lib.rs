@@ -1,12 +1,15 @@
 // git-sheets: Version control for spreadsheets
 // A tool for Excel sufferers who deserve better
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+
+pub mod errors;
+pub use errors::{GitSheetsError, Result};
 
 // ============================================================================
 // CORE PRIMITIVES
@@ -70,10 +73,7 @@ impl Snapshot {
     /// Create a new snapshot from a table
     pub fn new(table: Table, message: Option<String>) -> Self {
         let hashes = TableHashes::compute(&table);
-        let id = format!("{}-{}",
-            Utc::now().timestamp(),
-            &hashes.table_hash[..8]
-        );
+        let id = format!("{}-{}", Utc::now().timestamp(), &hashes.table_hash[..8]);
 
         Self {
             id,
@@ -91,14 +91,14 @@ impl Snapshot {
     }
 
     /// Save snapshot to disk as TOML
-    pub fn save(&self, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self, output_path: &Path) -> Result<(), GitSheetsError> {
         let toml_string = toml::to_string_pretty(self)?;
         fs::write(output_path, toml_string)?;
         Ok(())
     }
 
     /// Load snapshot from disk
-    pub fn load(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load(path: &Path) -> Result<Self, GitSheetsError> {
         let content = fs::read_to_string(path)?;
         let snapshot: Snapshot = toml::from_str(&content)?;
         Ok(snapshot)
@@ -108,6 +108,30 @@ impl Snapshot {
     pub fn verify(&self) -> bool {
         let computed = TableHashes::compute(&self.table);
         computed.table_hash == self.hashes.table_hash
+    }
+
+    /// Verify dependencies of this snapshot
+    pub fn verify_dependencies(&self) -> Result<(), GitSheetsError> {
+        for dep in &self.dependencies {
+            if let Some(dep_path) = &dep.path {
+                let content = fs::read_to_string(dep_path)?;
+                let computed_hash = Self::compute_hash(&content);
+                if computed_hash != dep.hash {
+                    return Err(GitSheetsError::DependencyHashMismatch(format!(
+                        "Dependency '{}' hash mismatch",
+                        dep.name
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Compute hash for string content
+    fn compute_hash(content: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        format!("{:x}", hasher.finalize())
     }
 }
 
@@ -122,7 +146,8 @@ impl TableHashes {
 
         // Hash each column
         for (idx, header) in table.headers.iter().enumerate() {
-            let column_data: Vec<&str> = table.rows
+            let column_data: Vec<&str> = table
+                .rows
                 .iter()
                 .map(|row| row.get(idx).map(|s| s.as_str()).unwrap_or(""))
                 .collect();
@@ -135,12 +160,7 @@ impl TableHashes {
         let table_hash = Self::hash_table(&table.headers, &table.rows);
 
         // Optional: per-row hashes
-        let row_hashes = Some(
-            table.rows
-                .iter()
-                .map(|row| Self::hash_row(row))
-                .collect()
-        );
+        let row_hashes = Some(table.rows.iter().map(|row| Self::hash_row(row)).collect());
 
         Self {
             table_hash,
@@ -191,7 +211,7 @@ impl TableHashes {
 
 impl Table {
     /// Create a table from CSV data
-    pub fn from_csv(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_csv(path: &Path) -> Result<Self, GitSheetsError> {
         let mut reader = csv::Reader::from_path(path)?;
 
         // Get headers
@@ -212,6 +232,10 @@ impl Table {
             rows.push(row);
         }
 
+        if rows.is_empty() {
+            return Err(GitSheetsError::EmptyTable);
+        }
+
         Ok(Self {
             headers,
             rows,
@@ -225,16 +249,25 @@ impl Table {
     }
 
     /// Get the primary key for a specific row
-    pub fn get_row_key(&self, row_idx: usize) -> Option<Vec<String>> {
-        let pk_indices = self.primary_key.as_ref()?;
-        let row = self.rows.get(row_idx)?;
+    pub fn get_row_key(&self, row_idx: usize) -> Result<Vec<String>, GitSheetsError> {
+        let pk_indices = self.primary_key.as_ref().ok_or_else(|| {
+            GitSheetsError::NoPrimaryKey
+        })?;
 
-        Some(
-            pk_indices
-                .iter()
-                .filter_map(|&idx| row.get(idx).cloned())
-                .collect()
-        )
+        let row = self.rows.get(row_idx).ok_or_else(|| {
+            GitSheetsError::InvalidRowIndex(format!("Row index {} exceeds row count {}", row_idx, self.rows.len()))
+        })?;
+
+        let pk_values: Vec<String> = pk_indices
+            .iter()
+            .filter_map(|&idx| row.get(idx).cloned())
+            .collect();
+
+        if pk_values.is_empty() {
+            return Err(GitSheetsError::NoPrimaryKey);
+        }
+
+        Ok(pk_values)
     }
 }
 
@@ -262,15 +295,32 @@ pub struct DiffSummary {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Change {
-    RowAdded { index: usize, data: Vec<String> },
-    RowRemoved { index: usize, data: Vec<String> },
-    CellChanged { row: usize, col: usize, old: String, new: String },
-    ColumnAdded { name: String, index: usize },
-    ColumnRemoved { name: String, index: usize },
+    RowAdded {
+        index: usize,
+        data: Vec<String>,
+    },
+    RowRemoved {
+        index: usize,
+        data: Vec<String>,
+    },
+    CellChanged {
+        row: usize,
+        col: usize,
+        old: String,
+        new: String,
+    },
+    ColumnAdded {
+        name: String,
+        index: usize,
+    },
+    ColumnRemoved {
+        name: String,
+        index: usize,
+    },
 }
 
 impl SnapshotDiff {
-    /// Compute diff between two snapshots
+    /// Compute diff between two snapshots using primary key matching
     pub fn compute(from: &Snapshot, to: &Snapshot) -> Self {
         let mut changes = Vec::new();
         let mut summary = DiffSummary {
@@ -289,7 +339,7 @@ impl SnapshotDiff {
             if !from_headers.contains(header) {
                 changes.push(Change::ColumnAdded {
                     name: header.clone(),
-                    index: idx
+                    index: idx,
                 });
                 summary.columns_added += 1;
             }
@@ -299,48 +349,56 @@ impl SnapshotDiff {
             if !to_headers.contains(header) {
                 changes.push(Change::ColumnRemoved {
                     name: header.clone(),
-                    index: idx
+                    index: idx,
                 });
                 summary.columns_removed += 1;
             }
         }
 
-        // Simple row comparison (could be smarter with primary keys)
-        let max_rows = from.table.rows.len().max(to.table.rows.len());
+        // Create maps from primary key values to row indices
+        let from_map = Self::create_pk_map(from);
+        let to_map = Self::create_pk_map(to);
 
-        for i in 0..max_rows {
-            match (from.table.rows.get(i), to.table.rows.get(i)) {
-                (None, Some(row)) => {
-                    changes.push(Change::RowAdded {
-                        index: i,
-                        data: row.clone()
-                    });
-                    summary.rows_added += 1;
-                }
-                (Some(row), None) => {
-                    changes.push(Change::RowRemoved {
-                        index: i,
-                        data: row.clone()
-                    });
-                    summary.rows_removed += 1;
-                }
-                (Some(from_row), Some(to_row)) => {
-                    if from_row != to_row {
-                        summary.rows_modified += 1;
-                        // Find specific cell changes
-                        for (col, (old, new)) in from_row.iter().zip(to_row.iter()).enumerate() {
-                            if old != new {
-                                changes.push(Change::CellChanged {
-                                    row: i,
-                                    col,
-                                    old: old.clone(),
-                                    new: new.clone(),
-                                });
-                            }
+        // Compare rows by primary key
+        for (pk, to_idx) in to_map {
+            if let Some(from_idx) = from_map.get(&pk) {
+                // Row exists in both, check for changes
+                if from.table.rows[*from_idx] != to.table.rows[to_idx] {
+                    summary.rows_modified += 1;
+                    // Find specific cell changes
+                    for (col, (old, new)) in from.table.rows[*from_idx]
+                        .iter()
+                        .zip(to.table.rows[to_idx].iter())
+                        .enumerate()
+                    {
+                        if old != new {
+                            changes.push(Change::CellChanged {
+                                row: to_idx,
+                                col,
+                                old: old.clone(),
+                                new: new.clone(),
+                            });
                         }
                     }
                 }
-                (None, None) => unreachable!(),
+            } else {
+                // New row
+                changes.push(Change::RowAdded {
+                    index: to_idx,
+                    data: to.table.rows[to_idx].clone(),
+                });
+                summary.rows_added += 1;
+            }
+        }
+
+        // Check for removed rows
+        for (pk, from_idx) in from_map {
+            if !to_map.contains_key(&pk) {
+                changes.push(Change::RowRemoved {
+                    index: from_idx,
+                    data: from.table.rows[from_idx].clone(),
+                });
+                summary.rows_removed += 1;
             }
         }
 
@@ -352,13 +410,34 @@ impl SnapshotDiff {
         }
     }
 
+    /// Create a map from primary key values to row indices
+    fn create_pk_map(snapshot: &Snapshot) -> HashMap<Vec<String>, Vec<usize>> {
+        let mut map = HashMap::new();
+        let pk_indices = match &snapshot.table.primary_key {
+            Some(indices) => indices,
+            None => return map,
+        };
+
+        for (row_idx, row) in snapshot.table.rows.iter().enumerate() {
+            let pk_values: Vec<String> = pk_indices
+                .iter()
+                .filter_map(|&idx| row.get(idx).cloned())
+                .collect();
+
+            if !pk_values.is_empty() {
+                map.insert(pk_values, vec![row_idx]);
+            }
+        }
+
+        map
+    }
+
     /// Save diff to disk
-    pub fn save(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self, path: &Path) -> Result<(), GitSheetsError> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
     }
-}
 
 // ============================================================================
 // CLI INTERFACE (example usage)
@@ -390,9 +469,7 @@ mod tests {
     fn test_hash_consistency() {
         let table = Table {
             headers: vec!["A".to_string(), "B".to_string()],
-            rows: vec![
-                vec!["1".to_string(), "2".to_string()],
-            ],
+            rows: vec![vec!["1".to_string(), "2".to_string()]],
             primary_key: None,
         };
 
