@@ -18,7 +18,7 @@ A command-line tool that brings Git-style version control to spreadsheets. Take 
 
 ### From Source
 
-```bash
+```
 # Clone the repository
 git clone https://github.com/CromboJambo/git-sheets
 cd git-sheets
@@ -43,7 +43,7 @@ cargo build --release
 
 ### 1. Initialize a repository
 
-```bash
+```
 # In your spreadsheet directory
 git-sheets init
 ```
@@ -56,7 +56,7 @@ This creates:
 
 ### 2. Create your first snapshot
 
-```bash
+```
 # From a CSV export
 git-sheets snapshot sales.csv -m "Initial Q4 data"
 
@@ -69,7 +69,7 @@ git-sheets snapshot sales.csv -m "Week 1 update" --commit
 
 ### 3. Compare snapshots
 
-```bash
+```
 # Text format (human-readable)
 git-sheets diff snapshots/sales_001.toml snapshots/sales_002.toml
 
@@ -82,14 +82,14 @@ git-sheets diff snapshots/sales_001.toml snapshots/sales_002.toml -f git
 
 ### 4. Verify integrity
 
-```bash
+```
 # Check if a snapshot has been tampered with
 git-sheets verify snapshots/sales_001.toml
 ```
 
 ### 5. View history
 
-```bash
+```
 # Show all snapshots
 git-sheets log
 
@@ -99,7 +99,8 @@ git-sheets log -l 5
 
 ### 6. Check status
 
-```bash
+```
+# Check if there are any uncommitted changes
 git-sheets status
 ```
 
@@ -109,7 +110,7 @@ git-sheets status
 
 ### The "Before Macro" Safety Net
 
-```bash
+```
 # 1. Export current state to CSV
 #    (From Excel: File → Save As → CSV)
 
@@ -132,10 +133,10 @@ git-sheets diff snapshots/data_001.toml snapshots/data_002.toml
 
 ### The "Inherited Spreadsheet" Audit
 
-```bash
 # 1. Snapshot the inherited mess
 git-sheets snapshot inherited_horror.csv -m "Received from Bob, 2025-12-15"
 
+```
 # 2. Make your changes carefully
 
 # 3. Snapshot after each logical change
