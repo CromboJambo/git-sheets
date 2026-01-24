@@ -320,96 +320,6 @@ pub enum Change {
 }
 
 impl SnapshotDiff {
-    /// Compute diff between two snapshots using primary key matching
-    pub fn compute(from: &Snapshot, to: &Snapshot) -> Self {
-        let mut changes = Vec::new();
-        let mut summary = DiffSummary {
-            rows_added: 0,
-            rows_removed: 0,
-            rows_modified: 0,
-            columns_added: 0,
-            columns_removed: 0,
-        };
-
-        // Compare headers
-        let from_headers: std::collections::HashSet<_> = from.table.headers.iter().collect();
-        let to_headers: std::collections::HashSet<_> = to.table.headers.iter().collect();
-
-        for (idx, header) in to.table.headers.iter().enumerate() {
-            if !from_headers.contains(header) {
-                changes.push(Change::ColumnAdded {
-                    name: header.clone(),
-                    index: idx,
-                });
-                summary.columns_added += 1;
-            }
-        }
-
-        for (idx, header) in from.table.headers.iter().enumerate() {
-            if !to_headers.contains(header) {
-                changes.push(Change::ColumnRemoved {
-                    name: header.clone(),
-                    index: idx,
-                });
-                summary.columns_removed += 1;
-            }
-        }
-
-        // Create maps from primary key values to row indices
-        let from_map = Self::create_pk_map(from);
-        let to_map = Self::create_pk_map(to);
-
-        // Compare rows by primary key
-        for (pk, to_idx) in to_map {
-            if let Some(from_idx) = from_map.get(&pk) {
-                // Row exists in both, check for changes
-                if from.table.rows[*from_idx] != to.table.rows[to_idx] {
-                    summary.rows_modified += 1;
-                    // Find specific cell changes
-                    for (col, (old, new)) in from.table.rows[*from_idx]
-                        .iter()
-                        .zip(to.table.rows[to_idx].iter())
-                        .enumerate()
-                    {
-                        if old != new {
-                            changes.push(Change::CellChanged {
-                                row: to_idx,
-                                col,
-                                old: old.clone(),
-                                new: new.clone(),
-                            });
-                        }
-                    }
-                }
-            } else {
-                // New row
-                changes.push(Change::RowAdded {
-                    index: to_idx,
-                    data: to.table.rows[to_idx].clone(),
-                });
-                summary.rows_added += 1;
-            }
-        }
-
-        // Check for removed rows
-        for (pk, from_idx) in from_map {
-            if !to_map.contains_key(&pk) {
-                changes.push(Change::RowRemoved {
-                    index: from_idx,
-                    data: from.table.rows[from_idx].clone(),
-                });
-                summary.rows_removed += 1;
-            }
-        }
-
-        Self {
-            from_id: from.id.clone(),
-            to_id: to.id.clone(),
-            summary,
-            changes,
-        }
-    }
-
     /// Create a map from primary key values to row indices
     fn create_pk_map(snapshot: &Snapshot) -> HashMap<Vec<String>, Vec<usize>> {
         let mut map = HashMap::new();
@@ -432,18 +342,95 @@ impl SnapshotDiff {
         map
     }
 
+    /// Create a diff between two snapshots
+    pub fn compute(from: &Snapshot, to: &Snapshot) -> Result<Self, GitSheetsError> {
+        let mut changes = Vec::new();
+        let mut summary = DiffSummary {
+            rows_added: 0,
+            rows_removed: 0,
+            rows_modified: 0,
+            columns_added: 0,
+            columns_removed: 0,
+        };
+
+        // Create primary key maps
+        let from_map = Self::create_pk_map(from);
+        let to_map = Self::create_pk_map(to);
+
+        // Compare rows using primary keys
+        for (pk, from_indices) in &from_map {
+            match to_map.get(pk) {
+                Some(to_indices) => {
+                    if from_indices.len() != to_indices.len() {
+                        summary.rows_modified += 1;
+                        // Find specific cell changes
+                        for (from_idx, to_idx) in from_indices.iter().zip(to_indices.iter()) {
+                            if from.table.rows[*from_idx] != to.table.rows[to_idx] {
+                                // Find specific cell changes
+                                for (col, (old, new)) in from.table.rows[*from_idx]
+                                    .iter()
+                                    .zip(to.table.rows[to_idx].iter())
+                                    .enumerate()
+                                {
+                                    if old != new {
+                                        changes.push(Change::CellChanged {
+                                            row: *to_idx,
+                                            col,
+                                            old: old.clone(),
+                                            new: new.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                None => {
+                    // Rows removed
+                    for from_idx in from_indices {
+                        summary.rows_removed += 1;
+                        changes.push(Change::RowRemoved {
+                            index: *from_idx,
+                            data: from.table.rows[*from_idx].clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check for new rows
+        for (pk, to_indices) in &to_map {
+            if !from_map.contains_key(pk) {
+                // New rows
+                for to_idx in to_indices {
+                    changes.push(Change::RowAdded {
+                        index: *to_idx,
+                        data: to.table.rows[*to_idx].clone(),
+                    });
+                    summary.rows_added += 1;
+                }
+            }
+        }
+
+        Ok(Self {
+            from_id: from.id.clone(),
+            to_id: to.id.clone(),
+            summary,
+            changes,
+        })
+    }
+
     /// Save diff to disk
     pub fn save(&self, path: &Path) -> Result<(), GitSheetsError> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
     }
+}
 
 // ============================================================================
 // CLI INTERFACE (example usage)
-// ============================================================================
-
-#[cfg(test)]
+#![cfg(test)]
 mod tests {
     use super::*;
 
@@ -479,38 +466,3 @@ mod tests {
         assert_eq!(hash1.table_hash, hash2.table_hash);
     }
 }
-
-// ============================================================================
-// USAGE NOTES
-// ============================================================================
-
-/*
-Example usage:
-
-// 1. Load a CSV
-let table = Table::from_csv(Path::new("sales.csv"))?;
-
-// 2. Create a snapshot
-let mut snapshot = Snapshot::new(table, Some("Initial import".to_string()));
-
-// 3. Add dependencies if needed
-snapshot.add_dependency(
-    "customers.csv".to_string(),
-    Some(PathBuf::from("../data/customers.csv")),
-    "abc123...".to_string()
-);
-
-// 4. Save snapshot
-snapshot.save(Path::new("snapshots/sales_001.toml"))?;
-
-// 5. Later: verify integrity
-let loaded = Snapshot::load(Path::new("snapshots/sales_001.toml"))?;
-assert!(loaded.verify());
-
-// 6. Compare two snapshots
-let old_snapshot = Snapshot::load(Path::new("snapshots/sales_001.toml"))?;
-let new_snapshot = Snapshot::load(Path::new("snapshots/sales_002.toml"))?;
-let diff = SnapshotDiff::compute(&old_snapshot, &new_snapshot);
-diff.save(Path::new("diffs/sales_001_to_002.json"))?;
-
-*/
