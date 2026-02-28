@@ -243,3 +243,70 @@ impl Table {
         Ok(pk_values)
     }
 }
+
+// ============================================================================
+// REPO OPERATIONS
+// ============================================================================
+
+/// A git-sheets repository
+pub struct GitSheetsRepo {
+    /// Path to the repository
+    pub path: PathBuf,
+    /// Git repository handle (optional)
+    pub git_repo: Option<git2::Repository>,
+}
+
+impl GitSheetsRepo {
+    /// Initialize a new git-sheets repository
+    pub fn init(path: PathBuf) -> Result<Self, GitSheetsError> {
+        let repo_path = path.canonicalize()?;
+
+        // Create directory structure
+        std::fs::create_dir_all(repo_path.join("snapshots"))?;
+        std::fs::create_dir_all(repo_path.join("diffs"))?;
+
+        // Create .gitignore if needed
+        let gitignore_path = repo_path.join(".gitignore");
+        if !gitignore_path.exists() {
+            let mut gitignore = std::fs::File::create(gitignore_path)?;
+            writeln!(gitignore, "snapshots/")?;
+            writeln!(gitignore, "diffs/")?;
+            writeln!(gitignore, "*.toml")?;
+            writeln!(gitignore, "*.json")?;
+        }
+
+        Ok(Self {
+            path: repo_path,
+            git_repo: None,
+        })
+    }
+
+    /// Open an existing git-sheets repository
+    pub fn open(path: &str) -> Result<Self, GitSheetsError> {
+        let repo_path = PathBuf::from(path).canonicalize()?;
+
+        if !repo_path.join("snapshots").exists() {
+            return Err(GitSheetsError::FileSystemError(
+                "Not a git-sheets repository".to_string(),
+            ));
+        }
+
+        Ok(Self {
+            path: repo_path,
+            git_repo: None,
+        })
+    }
+
+    /// Commit a snapshot to git
+    pub fn commit_snapshot(&self, snapshot: &Snapshot) -> Result<(), GitSheetsError> {
+        // This is a placeholder implementation
+        // In a real implementation, this would integrate with git
+        Ok(())
+    }
+
+    /// Check if there are uncommitted changes
+    pub fn has_changes(&self) -> bool {
+        // Placeholder implementation
+        false
+    }
+}

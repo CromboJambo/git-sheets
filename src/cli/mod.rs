@@ -1,9 +1,9 @@
 // git-sheets: CLI module - command parsing and implementations
 // A tool for Excel sufferers who deserve better
 
+use crate::core::Result;
+use crate::core::{Change, Snapshot, SnapshotDiff, Table};
 use clap::{Parser, Subcommand};
-use gitsheets::Result;
-use gitsheets::{Change, Snapshot, SnapshotDiff, Table};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -385,14 +385,14 @@ fn show_status() -> Result<(), Box<dyn std::error::Error>> {
 impl Cli {
     /// Execute the CLI command
     pub fn execute(&self) -> Result<()> {
-        execute_command(self.command.clone())
+        Self::execute_command(self.command.clone())
     }
 
     /// Execute a command
     fn execute_command(command: Commands) -> Result<()> {
         match command {
             Commands::Init { path } => {
-                let repo = GitSheetsRepo::init(path)?;
+                let repo = crate::core::GitSheetsRepo::init(path)?;
                 println!(
                     "Initialized git-sheets repository at {}",
                     repo.path.display()
@@ -420,7 +420,7 @@ impl Cli {
 
                 if commit {
                     // Commit to git
-                    let repo = GitSheetsRepo::open(".")?;
+                    let repo = crate::core::GitSheetsRepo::open(".")?;
                     repo.commit_snapshot(&snapshot)?;
                 }
 
@@ -433,11 +433,11 @@ impl Cli {
                 let diff = SnapshotDiff::compute(&from_snapshot, &to_snapshot)?;
 
                 match format {
-                    DiffFormat::Json => {
+                    crate::cli::DiffFormat::Json => {
                         diff.save(&Path::new("diffs").join(format!("{}.json", diff.from_id)))?;
                         println!("Diff saved as JSON");
                     }
-                    DiffFormat::Git => {
+                    crate::cli::DiffFormat::Git => {
                         // Print git-style diff
                         println!("--- {}", from_snapshot.id);
                         println!("+++ {}", to_snapshot.id);
@@ -478,7 +478,7 @@ impl Cli {
                 Ok(())
             }
             Commands::Status {} => {
-                let repo = GitSheetsRepo::open(".")?;
+                let repo = crate::core::GitSheetsRepo::open(".")?;
                 if repo.has_changes() {
                     println!("There are uncommitted changes");
                 } else {

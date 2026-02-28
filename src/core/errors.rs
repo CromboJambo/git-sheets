@@ -3,7 +3,6 @@
 
 use csv::Error as CsvError;
 use serde_json::Error as JsonError;
-use std::fmt;
 use std::io;
 use toml::de::Error as TomlDeError;
 use toml::ser::Error as TomlSerError;
@@ -46,9 +45,9 @@ impl fmt::Display for GitSheetsError {
             GitSheetsError::TomlError(msg) => write!(f, "TOML serialization error: {}", msg),
         }
     }
-}
 
-impl std::error::Error for GitSheetsError {}
+    impl std::error::Error for GitSheetsError {}
+}
 
 impl From<io::Error> for GitSheetsError {
     fn from(error: io::Error) -> Self {
@@ -80,4 +79,4 @@ impl From<JsonError> for GitSheetsError {
     }
 }
 
-impl std::error::Error for GitSheetsError {}
+// Removed duplicate implementation
