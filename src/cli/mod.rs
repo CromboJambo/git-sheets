@@ -2,6 +2,7 @@
 // A tool for Excel sufferers who deserve better
 
 use clap::{Parser, Subcommand};
+use gitsheets::Result;
 use gitsheets::{Change, Snapshot, SnapshotDiff, Table};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum Commands {
     /// Initialize a git-sheets repository
     Init {
@@ -73,43 +74,6 @@ enum Commands {
         #[arg(short, long)]
         limit: Option<usize>,
     },
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
-
-    match cli.command {
-        Commands::Init { path } => {
-            init_repository(&path)?;
-        }
-
-        Commands::Snapshot {
-            file,
-            message,
-            primary_key,
-            commit,
-        } => {
-            create_snapshot(&file, message, primary_key, commit)?;
-        }
-
-        Commands::Diff { from, to, format } => {
-            show_diff(&from, &to, &format)?;
-        }
-
-        Commands::Verify { snapshot } => {
-            verify_snapshot(&snapshot)?;
-        }
-
-        Commands::Status => {
-            show_status()?;
-        }
-
-        Commands::Log { limit } => {
-            show_log(limit)?;
-        }
-    }
-
-    Ok(())
 }
 
 // ============================================================================
@@ -418,6 +382,114 @@ fn show_status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+impl Cli {
+    /// Execute the CLI command
+    pub fn execute(&self) -> Result<()> {
+        execute_command(self.command.clone())
+    }
+
+    /// Execute a command
+    fn execute_command(command: Commands) -> Result<()> {
+        match command {
+            Commands::Init { path } => {
+                let repo = GitSheetsRepo::init(path)?;
+                println!(
+                    "Initialized git-sheets repository at {}",
+                    repo.path.display()
+                );
+                Ok(())
+            }
+            Commands::Snapshot {
+                file,
+                message,
+                primary_key,
+                commit,
+            } => {
+                let table = Table::from_csv(&file)?;
+                let mut snapshot = Snapshot::new(table, message);
+
+                if let Some(pk) = primary_key {
+                    let indices: Vec<usize> = pk
+                        .split(',')
+                        .map(|s| s.trim().parse().unwrap_or(0))
+                        .collect();
+                    snapshot.table.set_primary_key(indices);
+                }
+
+                snapshot.save(&Path::new("snapshots").join(format!("{}.toml", snapshot.id)))?;
+
+                if commit {
+                    // Commit to git
+                    let repo = GitSheetsRepo::open(".")?;
+                    repo.commit_snapshot(&snapshot)?;
+                }
+
+                println!("Snapshot created: {}", snapshot.id);
+                Ok(())
+            }
+            Commands::Diff { from, to, format } => {
+                let from_snapshot = Snapshot::load(&from)?;
+                let to_snapshot = Snapshot::load(&to)?;
+                let diff = SnapshotDiff::compute(&from_snapshot, &to_snapshot)?;
+
+                match format {
+                    DiffFormat::Json => {
+                        diff.save(&Path::new("diffs").join(format!("{}.json", diff.from_id)))?;
+                        println!("Diff saved as JSON");
+                    }
+                    DiffFormat::Git => {
+                        // Print git-style diff
+                        println!("--- {}", from_snapshot.id);
+                        println!("+++ {}", to_snapshot.id);
+                        for change in &diff.changes {
+                            match change {
+                                Change::RowAdded { index, data } => {
+                                    println!("@@ -0 +{} @@", index + 1);
+                                    println!("+{}", data.join("\t"));
+                                }
+                                Change::RowRemoved { index, data } => {
+                                    println!("@@ -{} +0 @@", index + 1);
+                                    println!("-{}", data.join("\t"));
+                                }
+                                Change::CellChanged { row, col, old, new } => {
+                                    println!("@@ -{} +{} @@", row + 1, row + 1);
+                                    println!("-{}", old);
+                                    println!("+{}", new);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+            Commands::Verify { snapshot } => {
+                let snapshot = Snapshot::load(&snapshot)?;
+                if snapshot.verify() {
+                    println!("Snapshot verified: {}", snapshot.id);
+                } else {
+                    println!("Snapshot verification failed: {}", snapshot.id);
+                }
+                Ok(())
+            }
+            Commands::Log { limit } => {
+                show_log(limit)?;
+                Ok(())
+            }
+            Commands::Status {} => {
+                let repo = GitSheetsRepo::open(".")?;
+                if repo.has_changes() {
+                    println!("There are uncommitted changes");
+                } else {
+                    println!("No uncommitted changes");
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 fn show_log(limit: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
     let snapshots_dir = Path::new("snapshots");
 
@@ -467,3 +539,5 @@ fn show_log(limit: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+// This function is already defined above, so we'll remove this duplicate

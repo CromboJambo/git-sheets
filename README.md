@@ -133,22 +133,20 @@ git-sheets diff snapshots/data_001.toml snapshots/data_002.toml
 
 ### The "Inherited Spreadsheet" Audit
 
-# 1. Snapshot the inherited mess
+1. Snapshot the inherited mess
 git-sheets snapshot inherited_horror.csv -m "Received from Bob, 2025-12-15"
 
-```
-# 2. Make your changes carefully
+2. Make your changes carefully
 
-# 3. Snapshot after each logical change
+3. Snapshot after each logical change
 git-sheets snapshot inherited_horror.csv -m "Fixed formula in column D"
 git-sheets snapshot inherited_horror.csv -m "Removed duplicate rows"
 git-sheets snapshot inherited_horror.csv -m "Added validation column"
 
-# 4. You now have an audit trail showing:
-#    - What you received
-#    - Each change you made
-#    - Why you made it
-```
+4. You now have an audit trail showing:
+   - What you received
+   - Each change you made
+   - Why you made it
 
 ---
 
@@ -208,6 +206,16 @@ ID = "abc123..."
 Name = "def456..."
 Amount = "ghi789..."
 ```
+
+### Storage Format Considerations
+
+The current snapshot format uses TOML for metadata and structure, but we're considering alternatives for the tabular data portion. While TOML is readable and well-suited for configuration-like data, it can become verbose for large tabular datasets.
+
+For phase 2, we may consider:
+- Keeping TOML for snapshot metadata (id, timestamp, message, hashes)
+- Using TSV or Parquet for the raw row data to reduce file size
+- This would make snapshots more efficient for large datasets while maintaining the benefits of per-header hashing
+
 
 ### Diff Format (JSON)
 

@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub mod errors;
@@ -51,6 +52,47 @@ pub struct TableHashes {
     pub header_hashes: HashMap<String, String>,
     /// Optional: per-row hashes (fine-grained verification)
     pub row_hashes: Option<Vec<String>>,
+}
+
+impl TableHashes {
+    /// Compute hashes for a table
+    pub fn compute(table: &Table) -> Self {
+        let mut hasher = Sha256::new();
+
+        // Hash the entire table by concatenating all data
+        for header in &table.headers {
+            hasher.update(header.as_bytes());
+        }
+        for row in &table.rows {
+            for cell in row {
+                hasher.update(cell.as_bytes());
+            }
+        }
+
+        let table_hash = format!("{:x}", hasher.finalize());
+
+        // Compute per-header hashes
+        let mut header_hashes = HashMap::new();
+        for (idx, header) in table.headers.iter().enumerate() {
+            let mut hasher = Sha256::new();
+            hasher.update(header.as_bytes());
+
+            // Hash all values in this column
+            for row in &table.rows {
+                if idx < row.len() {
+                    hasher.update(row[idx].as_bytes());
+                }
+            }
+
+            header_hashes.insert(header.clone(), format!("{:x}", hasher.finalize()));
+        }
+
+        Self {
+            table_hash,
+            header_hashes,
+            row_hashes: None,
+        }
+    }
 }
 
 /// A dependency represents a reference to another table or file
