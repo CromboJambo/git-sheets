@@ -76,6 +76,15 @@ enum Commands {
     },
 }
 
+/// Diff output format
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum DiffFormat {
+    /// JSON format
+    Json,
+    /// Git-style unified diff
+    Git,
+}
+
 // ============================================================================
 // COMMAND IMPLEMENTATIONS
 // ============================================================================

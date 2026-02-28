@@ -109,11 +109,11 @@ impl SnapshotDiff {
                         summary.rows_modified += 1;
                         // Find specific cell changes
                         for (from_idx, to_idx) in from_indices.iter().zip(to_indices.iter()) {
-                            if from.table.rows[*from_idx] != to.table.rows[to_idx] {
+                            if from.table.rows[*from_idx] != to.table.rows[*to_idx] {
                                 // Find specific cell changes
                                 for (col, (old, new)) in from.table.rows[*from_idx]
                                     .iter()
-                                    .zip(to.table.rows[to_idx].iter())
+                                    .zip(to.table.rows[*to_idx].iter())
                                     .enumerate()
                                 {
                                     if old != new {
