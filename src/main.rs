@@ -7,6 +7,7 @@
 //   git-sheets init
 //   git-sheets status
 
+use clap::Parser;
 use gitsheets::Cli;
 
 fn main() {

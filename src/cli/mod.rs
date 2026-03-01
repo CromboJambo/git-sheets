@@ -16,6 +16,44 @@ pub struct Cli {
     command: Commands,
 }
 
+impl Cli {
+    /// Execute the command
+    pub fn execute(&self) -> Result<()> {
+        match &self.command {
+            Commands::Init { path } => {
+                crate::cli::init_repository(&Path::new(path))?;
+            }
+            Commands::Snapshot {
+                file,
+                message,
+                primary_key,
+                auto_commit,
+            } => {
+                crate::cli::create_snapshot(
+                    &Path::new(file),
+                    message.clone(),
+                    primary_key.clone(),
+                    *auto_commit,
+                )?;
+            }
+            Commands::Diff { from, to, format } => {
+                let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
+                crate::cli::show_diff(&Path::new(from), &Path::new(to), format_str)?;
+            }
+            Commands::Verify { file } => {
+                crate::cli::verify_snapshot(&Path::new(file))?;
+            }
+            Commands::Status => {
+                crate::cli::show_status()?;
+            }
+            Commands::Log { limit } => {
+                crate::cli::show_log(*limit)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Initialize a new git-sheets repository

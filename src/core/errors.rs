@@ -30,24 +30,6 @@ pub enum GitSheetsError {
     FileSystemError(String),
 }
 
-impl Clone for GitSheetsError {
-    fn clone(&self) -> Self {
-        match self {
-            GitSheetsError::TomlError(e) => GitSheetsError::TomlError(e.clone()),
-            GitSheetsError::TomlSerError(e) => GitSheetsError::TomlSerError(e.clone()),
-            GitSheetsError::DependencyHashMismatch(s) => {
-                GitSheetsError::DependencyHashMismatch(s.clone())
-            }
-            GitSheetsError::EmptyTable => GitSheetsError::EmptyTable,
-            GitSheetsError::NoPrimaryKey => GitSheetsError::NoPrimaryKey,
-            GitSheetsError::InvalidRowIndex(s) => GitSheetsError::InvalidRowIndex(s.clone()),
-            GitSheetsError::FileSystemError(s) => GitSheetsError::FileSystemError(s.clone()),
-            // Note: IoError and CsvError don't implement Clone, so we use a workaround
-            _ => std::mem::take(self),
-        }
-    }
-}
-
 impl PartialEq for GitSheetsError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
