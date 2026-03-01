@@ -1,6 +1,7 @@
 // git-sheets: Hash module - pure hash computation logic
 // A tool for Excel sufferers who deserve better
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 

@@ -1,82 +1,69 @@
-// git-sheets: Core error types
+// git-sheets: Core module - fundamental data structures and operations
 // A tool for Excel sufferers who deserve better
 
-use csv::Error as CsvError;
-use serde_json::Error as JsonError;
-use std::io;
-use toml::de::Error as TomlDeError;
-use toml::ser::Error as TomlSerError;
-
 use std::fmt;
+use std::io;
 
-/// Result type for git-sheets operations
-pub type Result<T> = std::result::Result<T, GitSheetsError>;
-
-/// Error types for git-sheets operations
-#[derive(Debug, Clone)]
+/// Error type for git-sheets operations
+#[derive(Debug, Clone, PartialEq)]
 pub enum GitSheetsError {
-    /// CSV parsing error
-    CsvParseError(String),
-    /// Empty table error
-    EmptyTable,
-    /// No primary key error
-    NoPrimaryKey,
-    /// Invalid row index error
-    InvalidRowIndex(String),
+    /// IO error during file operations
+    IoError(io::Error),
+    /// Parsing error when reading files
+    ParseError(serde_json::Error),
     /// Dependency hash mismatch
     DependencyHashMismatch(String),
+    /// Empty table encountered
+    EmptyTable,
+    /// No primary key defined
+    NoPrimaryKey,
+    /// Invalid row index provided
+    InvalidRowIndex(String),
     /// File system error
     FileSystemError(String),
-    /// TOML serialization error
-    TomlError(String),
 }
 
 impl fmt::Display for GitSheetsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GitSheetsError::CsvParseError(msg) => write!(f, "CSV Parse Error: {}", msg),
-            GitSheetsError::EmptyTable => write!(f, "Empty table"),
-            GitSheetsError::NoPrimaryKey => write!(f, "No primary key defined"),
-            GitSheetsError::InvalidRowIndex(msg) => write!(f, "Invalid row index: {}", msg),
+            GitSheetsError::IoError(e) => write!(f, "IO Error: {}", e),
+            GitSheetsError::ParseError(e) => write!(f, "Parse Error: {}", e),
             GitSheetsError::DependencyHashMismatch(msg) => {
-                write!(f, "Dependency hash mismatch: {}", msg)
+                write!(f, "Dependency Hash Mismatch: {}", msg)
             }
-            GitSheetsError::FileSystemError(msg) => write!(f, "File system error: {}", msg),
-            GitSheetsError::TomlError(msg) => write!(f, "TOML serialization error: {}", msg),
+            GitSheetsError::EmptyTable => write!(f, "Empty Table"),
+            GitSheetsError::NoPrimaryKey => write!(f, "No Primary Key"),
+            GitSheetsError::InvalidRowIndex(msg) => write!(f, "Invalid Row Index: {}", msg),
+            GitSheetsError::FileSystemError(msg) => write!(f, "File System Error: {}", msg),
         }
     }
+}
 
-    impl std::error::Error for GitSheetsError {}
+impl std::error::Error for GitSheetsError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            GitSheetsError::IoError(e) => Some(e),
+            GitSheetsError::ParseError(e) => Some(e),
+            GitSheetsError::DependencyHashMismatch(_) => None,
+            GitSheetsError::EmptyTable => None,
+            GitSheetsError::NoPrimaryKey => None,
+            GitSheetsError::InvalidRowIndex(_) => None,
+            GitSheetsError::FileSystemError(_) => None,
+        }
+    }
 }
 
 impl From<io::Error> for GitSheetsError {
     fn from(error: io::Error) -> Self {
-        GitSheetsError::FileSystemError(error.to_string())
+        GitSheetsError::IoError(error)
     }
 }
 
-impl From<TomlSerError> for GitSheetsError {
-    fn from(error: TomlSerError) -> Self {
-        GitSheetsError::TomlError(error.to_string())
+impl From<serde_json::Error> for GitSheetsError {
+    fn from(error: serde_json::Error) -> Self {
+        GitSheetsError::ParseError(error)
     }
 }
 
-impl From<TomlDeError> for GitSheetsError {
-    fn from(error: TomlDeError) -> Self {
-        GitSheetsError::TomlError(error.to_string())
-    }
-}
-
-impl From<CsvError> for GitSheetsError {
-    fn from(error: CsvError) -> Self {
-        GitSheetsError::CsvParseError(error.to_string())
-    }
-}
-
-impl From<JsonError> for GitSheetsError {
-    fn from(error: JsonError) -> Self {
-        GitSheetsError::FileSystemError(error.to_string())
-    }
-}
-
-// Removed duplicate implementation
+/// Result type for git-sheets operations
+pub type Result<T> = std::result::Result<T, GitSheetsError>;

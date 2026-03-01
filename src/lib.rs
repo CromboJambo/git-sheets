@@ -14,3 +14,6 @@ pub use diff::{Change, DiffSummary, SnapshotDiff};
 
 // Re-export CLI module
 pub use cli::Cli;
+
+// Export the main run function
+pub use cli::run;

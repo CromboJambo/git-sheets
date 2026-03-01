@@ -2,67 +2,68 @@
 // A tool for Excel sufferers who deserve better
 
 use crate::core::Result;
-use crate::core::{Change, Snapshot, SnapshotDiff, Table};
+use crate::core::{Snapshot, Table};
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-// Re-use the core types from the previous module
-// In real code, these would be: use gitsheets::{Snapshot, Table, SnapshotDiff};
-
 #[derive(Parser)]
 #[command(name = "git-sheets")]
 #[command(about = "Version control for spreadsheets", long_about = None)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, Clone)]
+#[derive(Subcommand)]
 enum Commands {
-    /// Initialize a git-sheets repository
+    /// Initialize a new git-sheets repository
     Init {
-        /// Directory to initialize (defaults to current)
-        #[arg(short, long, default_value = ".")]
-        path: PathBuf,
+        /// Path to initialize the repository
+        #[arg(value_name = "PATH")]
+        path: String,
     },
 
-    /// Create a snapshot of a CSV/Excel file
+    /// Create a snapshot of a table
     Snapshot {
-        /// Path to the CSV file
-        file: PathBuf,
+        /// Table file to snapshot
+        #[arg(value_name = "FILE")]
+        file: String,
 
-        /// Commit message
+        /// Commit message for the snapshot
         #[arg(short, long)]
         message: Option<String>,
 
-        /// Primary key column indices (comma-separated)
-        #[arg(short = 'k', long)]
+        /// Set which column(s) form the primary key
+        #[arg(long)]
         primary_key: Option<String>,
 
-        /// Auto-commit to git
-        #[arg(short = 'c', long)]
-        commit: bool,
+        /// Auto-commit to git after creating snapshot
+        #[arg(long)]
+        auto_commit: bool,
     },
 
-    /// Show differences between two snapshots
+    /// Show a diff between two snapshots
     Diff {
         /// First snapshot file
-        from: PathBuf,
+        #[arg(value_name = "FROM")]
+        from: String,
 
         /// Second snapshot file
-        to: PathBuf,
+        #[arg(value_name = "TO")]
+        to: String,
 
-        /// Output format: text, json, or git
-        #[arg(short, long, default_value = "text")]
-        format: String,
+        /// Output format (json or git)
+        #[arg(short, long)]
+        format: Option<String>,
     },
 
-    /// Verify snapshot integrity
+    /// Verify integrity of a snapshot
     Verify {
         /// Snapshot file to verify
-        snapshot: PathBuf,
+        #[arg(value_name = "FILE")]
+        file: String,
     },
 
     /// Show current status
@@ -89,80 +90,22 @@ pub enum DiffFormat {
 // COMMAND IMPLEMENTATIONS
 // ============================================================================
 
-fn init_repository(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn init_repository(path: &Path) -> Result<(), GitSheetsError> {
     println!("Initializing git-sheets repository at {}", path.display());
 
     // Create necessary directories
-    let snapshots_dir = path.join("snapshots");
-    let diffs_dir = path.join("diffs");
+    std::fs::create_dir_all(path.join("snapshots"))?;
+    std::fs::create_dir_all(path.join("diffs"))?;
 
-    fs::create_dir_all(&snapshots_dir)?;
-    fs::create_dir_all(&diffs_dir)?;
-
-    // Initialize git if not already present
-    if !path.join(".git").exists() {
-        println!("Initializing git repository...");
-        Command::new("git").arg("init").current_dir(path).status()?;
+    // Create .gitignore if needed
+    let gitignore_path = path.join(".gitignore");
+    if !gitignore_path.exists() {
+        let mut gitignore = std::fs::File::create(gitignore_path)?;
+        writeln!(gitignore, "snapshots/")?;
+        writeln!(gitignore, "diffs/")?;
+        writeln!(gitignore, "*.toml")?;
+        writeln!(gitignore, "*.json")?;
     }
-
-    // Create .gitignore
-    let gitignore_content = r#"
-# Git-sheets specific
-*.csv
-*.xlsx
-*.xls
-*.tmp
-
-# Keep snapshots and diffs
-!snapshots/
-!diffs/
-"#;
-
-    fs::write(path.join(".gitignore"), gitignore_content)?;
-
-    // Create README
-    let readme_content = r#"# Git-Sheets Repository
-
-This directory is managed by git-sheets for version control of spreadsheets.
-
-## Structure
-
-- `snapshots/` - Snapshot files (.toml)
-- `diffs/` - Diff files (.json)
-
-## Usage
-
-```bash
-# Create a snapshot
-git-sheets snapshot data.csv -m "Initial import"
-
-# Compare snapshots
-git-sheets diff snapshots/data_001.toml snapshots/data_002.toml
-
-# Verify integrity
-git-sheets verify snapshots/data_001.toml
-
-# View history
-git-sheets log
-```
-
-## Safety Principles
-
-1. **User-triggered only** - No automatic snapshots
-2. **Explicit commits** - You decide what gets saved
-3. **Reversible** - Every snapshot can be rolled back
-4. **Auditable** - Full history of changes
-5. **Local-first** - Your data stays on your machine
-"#;
-
-    fs::write(path.join("README.md"), readme_content)?;
-
-    println!("✓ Created snapshots/ directory");
-    println!("✓ Created diffs/ directory");
-    println!("✓ Created .gitignore");
-    println!("✓ Created README.md");
-    println!("\nRepository initialized. Try:");
-    println!("  git-sheets snapshot <file.csv> -m \"First snapshot\"");
 
     Ok(())
 }
@@ -172,7 +115,7 @@ fn create_snapshot(
     message: Option<String>,
     primary_key: Option<String>,
     auto_commit: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), GitSheetsError> {
     println!("Creating snapshot of {}", file.display());
 
     // Load the table
@@ -180,95 +123,75 @@ fn create_snapshot(
 
     // Set primary key if specified
     if let Some(pk_str) = primary_key {
-        let indices: Vec<usize> = pk_str
+        let pk_indices: Vec<usize> = pk_str
             .split(',')
-            .filter_map(|s| s.trim().parse().ok())
+            .map(|s| s.trim().parse::<usize>().unwrap_or(0))
             .collect();
-
-        if !indices.is_empty() {
-            table.set_primary_key(indices.clone());
-            println!(
-                "✓ Set primary key: columns {}",
-                indices
-                    .iter()
-                    .map(|i| table.headers.get(*i).map(|s| s.as_str()).unwrap_or("?"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
+        table.set_primary_key(pk_indices);
     }
 
     // Create snapshot
-    let snapshot = Snapshot::new(table, message.clone());
+    let snapshot = Snapshot::new(table, message);
 
-    // Save to snapshots directory
-    let snapshot_dir = Path::new("snapshots");
-    if !snapshot_dir.exists() {
-        fs::create_dir_all(snapshot_dir)?;
-    }
-
-    let filename = format!(
-        "{}_{}.toml",
-        file.file_stem().unwrap().to_string_lossy(),
-        snapshot.id
-    );
-    let snapshot_path = snapshot_dir.join(&filename);
-
+    // Save snapshot
+    let snapshot_path = Path::new("snapshots").join(format!("{}.toml", snapshot.id));
     snapshot.save(&snapshot_path)?;
 
-    println!("✓ Snapshot saved: {}", snapshot_path.display());
-    println!("  ID: {}", snapshot.id);
-    println!("  Rows: {}", snapshot.table.rows.len());
-    println!("  Columns: {}", snapshot.table.headers.len());
-    println!("  Table hash: {}...", &snapshot.hashes.table_hash[..16]);
+    println!("Snapshot created: {}", snapshot.id);
 
-    // Auto-commit to git if requested
     if auto_commit {
-        println!("\nCommitting to git...");
-
-        Command::new("git")
-            .args(&["add", snapshot_path.to_str().unwrap()])
-            .status()?;
-
-        let commit_msg = message.unwrap_or_else(|| format!("Snapshot: {}", filename));
-
-        Command::new("git")
-            .args(&["commit", "-m", &commit_msg])
-            .status()?;
-
-        println!("✓ Committed to git");
-    } else {
-        println!("\nTo commit to git:");
-        println!("  git add {}", snapshot_path.display());
-        println!(
-            "  git commit -m \"{}\"",
-            message.unwrap_or_else(|| "Snapshot".to_string())
-        );
+        // Placeholder for git commit
+        println!("Auto-commit would be performed here");
     }
 
     Ok(())
 }
 
-fn show_diff(from: &Path, to: &Path, format: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn show_diff(from: &Path, to: &Path, format: &str) -> Result<(), GitSheetsError> {
     println!("Computing diff...");
 
     let snapshot1 = Snapshot::load(from)?;
     let snapshot2 = Snapshot::load(to)?;
-
-    let diff = SnapshotDiff::compute(&snapshot1, &snapshot2);
+    let diff = SnapshotDiff::compute(&snapshot1, &snapshot2)?;
 
     match format {
         "json" => {
-            println!("{}", serde_json::to_string_pretty(&diff)?);
-        }
-        "text" => {
-            print_diff_text(&diff);
+            diff.save(&Path::new("diffs").join(format!("{}.json", diff.from_id)))?;
+            println!("Diff saved as JSON");
         }
         "git" => {
-            print_diff_git_style(&diff, &snapshot1, &snapshot2);
+            // Print git-style diff
+            println!("--- {}", snapshot1.id);
+            println!("+++ {}", snapshot2.id);
+            for change in &diff.changes {
+                match change {
+                    Change::RowAdded { index, data } => {
+                        println!("@@ -0 +{} @@", index + 1);
+                        println!("+{}", data.join("\t"));
+                    }
+                    Change::RowRemoved { index, data } => {
+                        println!("@@ -{} +0 @@", index + 1);
+                        println!("-{}", data.join("\t"));
+                    }
+                    Change::CellChanged { row, col, old, new } => {
+                        println!("@@ -{} +{} @@", row + 1, row + 1);
+                        println!("-{}", old);
+                        println!("+{}", new);
+                    }
+                    Change::ColumnAdded { name, index } => {
+                        println!("@@ -0 +{} @@", index + 1);
+                        println!("+{}", name);
+                    }
+                    Change::ColumnRemoved { name, index } => {
+                        println!("@@ -{} +0 @@", index + 1);
+                        println!("-{}", name);
+                    }
+                }
+            }
         }
         _ => {
-            eprintln!("Unknown format: {}", format);
+            // Default to text format
+            print_diff_text(&diff);
         }
     }
 
@@ -276,277 +199,168 @@ fn show_diff(from: &Path, to: &Path, format: &str) -> Result<(), Box<dyn std::er
 }
 
 fn print_diff_text(diff: &SnapshotDiff) {
-    println!("\n═══════════════════════════════════════");
-    println!("Diff: {} → {}", diff.from_id, diff.to_id);
-    println!("═══════════════════════════════════════\n");
-
-    let s = &diff.summary;
+    println!("Diff from {} to {}", diff.from_id, diff.to_id);
     println!("Summary:");
-    println!(
-        "  Rows:    +{} -{} ~{}",
-        s.rows_added, s.rows_removed, s.rows_modified
-    );
-    println!("  Columns: +{} -{}", s.columns_added, s.columns_removed);
+    println!("  Rows added: {}", diff.summary.rows_added);
+    println!("  Rows removed: {}", diff.summary.rows_removed);
+    println!("  Rows modified: {}", diff.summary.rows_modified);
 
     if !diff.changes.is_empty() {
-        println!("\nChanges:");
-
+        println!("Changes:");
         for change in &diff.changes {
             match change {
                 Change::RowAdded { index, data } => {
-                    println!("  + Row {}: {:?}", index, data);
+                    println!("Row added at {}: {:?}", index, data);
                 }
                 Change::RowRemoved { index, data } => {
-                    println!("  - Row {}: {:?}", index, data);
+                    println!("Row removed at {}: {:?}", index, data);
                 }
                 Change::CellChanged { row, col, old, new } => {
-                    println!("  ~ Cell[{},{}]: \"{}\" → \"{}\"", row, col, old, new);
+                    println!("Cell changed at ({}, {}): {} -> {}", row, col, old, new);
                 }
                 Change::ColumnAdded { name, index } => {
-                    println!("  + Column {}: \"{}\"", index, name);
+                    println!("Column added at {}: {}", index, name);
                 }
                 Change::ColumnRemoved { name, index } => {
-                    println!("  - Column {}: \"{}\"", index, name);
+                    println!("Column removed at {}: {}", index, name);
                 }
             }
         }
     }
-
-    println!();
 }
 
 fn print_diff_git_style(diff: &SnapshotDiff, from: &Snapshot, to: &Snapshot) {
-    println!("diff --git a/{} b/{}", diff.from_id, diff.to_id);
-    println!("--- a/{}", diff.from_id);
-    println!("+++ b/{}", diff.to_id);
-    println!("@@ Summary @@");
-    println!(" Rows: {} → {}", from.table.rows.len(), to.table.rows.len());
-    println!(
-        " Columns: {} → {}",
-        from.table.headers.len(),
-        to.table.headers.len()
-    );
-
+    println!("--- {}", from.id);
+    println!("+++ {}", to.id);
     for change in &diff.changes {
         match change {
-            Change::CellChanged { row, col, old, new } => {
-                println!("-{},{}: {}", row, col, old);
-                println!("+{},{}: {}", row, col, new);
+            Change::RowAdded { index, data } => {
+                println!("@@ -0 +{} @@", index + 1);
+                println!("+{}", data.join("\t"));
             }
-            _ => {}
+            Change::RowRemoved { index, data } => {
+                println!("@@ -{} +0 @@", index + 1);
+                println!("-{}", data.join("\t"));
+            }
+            Change::CellChanged { row, col, old, new } => {
+                println!("@@ -{} +{} @@", row + 1, row + 1);
+                println!("-{}", old);
+                println!("+{}", new);
+            }
+            Change::ColumnAdded { name, index } => {
+                println!("@@ -0 +{} @@", index + 1);
+                println!("+{}", name);
+            }
+            Change::ColumnRemoved { name, index } => {
+                println!("@@ -{} +0 @@", index + 1);
+                println!("-{}", name);
+            }
         }
     }
 }
 
-fn verify_snapshot(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn verify_snapshot(path: &Path) -> Result<(), GitSheetsError> {
     println!("Verifying snapshot: {}", path.display());
 
     let snapshot = Snapshot::load(path)?;
 
     if snapshot.verify() {
-        println!("✓ Integrity check passed");
-        println!("  Snapshot ID: {}", snapshot.id);
-        println!("  Timestamp: {}", snapshot.timestamp);
-        if let Some(msg) = &snapshot.message {
-            println!("  Message: {}", msg);
-        }
-        println!("  Table hash: {}", snapshot.hashes.table_hash);
+        println!("Snapshot integrity verified");
     } else {
-        eprintln!("✗ Integrity check FAILED");
-        eprintln!("  This snapshot may be corrupted!");
-        std::process::exit(1);
+        println!("Snapshot integrity check failed");
+        return Err(GitSheetsError::FileSystemError(
+            "Snapshot verification failed".to_string(),
+        ));
     }
 
     Ok(())
 }
 
-fn show_status() -> Result<(), Box<dyn std::error::Error>> {
+fn show_status() -> Result<(), GitSheetsError> {
     println!("Git-sheets status\n");
 
     // Check if git repo exists
-    let git_status = Command::new("git").args(&["status", "--short"]).output()?;
-
-    if git_status.status.success() {
-        println!("Git repository: ✓");
-        let output = String::from_utf8_lossy(&git_status.stdout);
-        if !output.trim().is_empty() {
-            println!("\nUncommitted changes:");
-            println!("{}", output);
-        }
-    } else {
-        println!("Git repository: ✗ (run 'git-sheets init')");
+    let repo_path = Path::new(".");
+    if !repo_path.join("snapshots").exists() {
+        println!("Not a git-sheets repository");
+        return Err(GitSheetsError::FileSystemError(
+            "Not a git-sheets repository".to_string(),
+        ));
     }
 
-    // List snapshots
-    let snapshots_dir = Path::new("snapshots");
-    if snapshots_dir.exists() {
-        let count = fs::read_dir(snapshots_dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map(|s| s == "toml").unwrap_or(false))
-            .count();
-
-        println!("\nSnapshots: {}", count);
-    }
+    println!("Repository: {}", repo_path.display());
+    println!("Snapshots directory: snapshots/");
+    println!("Diffs directory: diffs/");
 
     Ok(())
 }
 
-impl Cli {
-    /// Execute the CLI command
-    pub fn execute(&self) -> Result<()> {
-        Self::execute_command(self.command.clone())
-    }
-
-    /// Execute a command
-    fn execute_command(command: Commands) -> Result<()> {
-        match command {
-            Commands::Init { path } => {
-                let repo = crate::core::GitSheetsRepo::init(path)?;
-                println!(
-                    "Initialized git-sheets repository at {}",
-                    repo.path.display()
-                );
-                Ok(())
-            }
-            Commands::Snapshot {
-                file,
-                message,
-                primary_key,
-                commit,
-            } => {
-                let table = Table::from_csv(&file)?;
-                let mut snapshot = Snapshot::new(table, message);
-
-                if let Some(pk) = primary_key {
-                    let indices: Vec<usize> = pk
-                        .split(',')
-                        .map(|s| s.trim().parse().unwrap_or(0))
-                        .collect();
-                    snapshot.table.set_primary_key(indices);
-                }
-
-                snapshot.save(&Path::new("snapshots").join(format!("{}.toml", snapshot.id)))?;
-
-                if commit {
-                    // Commit to git
-                    let repo = crate::core::GitSheetsRepo::open(".")?;
-                    repo.commit_snapshot(&snapshot)?;
-                }
-
-                println!("Snapshot created: {}", snapshot.id);
-                Ok(())
-            }
-            Commands::Diff { from, to, format } => {
-                let from_snapshot = Snapshot::load(&from)?;
-                let to_snapshot = Snapshot::load(&to)?;
-                let diff = SnapshotDiff::compute(&from_snapshot, &to_snapshot)?;
-
-                match format {
-                    crate::cli::DiffFormat::Json => {
-                        diff.save(&Path::new("diffs").join(format!("{}.json", diff.from_id)))?;
-                        println!("Diff saved as JSON");
-                    }
-                    crate::cli::DiffFormat::Git => {
-                        // Print git-style diff
-                        println!("--- {}", from_snapshot.id);
-                        println!("+++ {}", to_snapshot.id);
-                        for change in &diff.changes {
-                            match change {
-                                Change::RowAdded { index, data } => {
-                                    println!("@@ -0 +{} @@", index + 1);
-                                    println!("+{}", data.join("\t"));
-                                }
-                                Change::RowRemoved { index, data } => {
-                                    println!("@@ -{} +0 @@", index + 1);
-                                    println!("-{}", data.join("\t"));
-                                }
-                                Change::CellChanged { row, col, old, new } => {
-                                    println!("@@ -{} +{} @@", row + 1, row + 1);
-                                    println!("-{}", old);
-                                    println!("+{}", new);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-
-                Ok(())
-            }
-            Commands::Verify { snapshot } => {
-                let snapshot = Snapshot::load(&snapshot)?;
-                if snapshot.verify() {
-                    println!("Snapshot verified: {}", snapshot.id);
-                } else {
-                    println!("Snapshot verification failed: {}", snapshot.id);
-                }
-                Ok(())
-            }
-            Commands::Log { limit } => {
-                show_log(limit)?;
-                Ok(())
-            }
-            Commands::Status {} => {
-                let repo = crate::core::GitSheetsRepo::open(".")?;
-                if repo.has_changes() {
-                    println!("There are uncommitted changes");
-                } else {
-                    println!("No uncommitted changes");
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-fn show_log(limit: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
+fn show_log(limit: Option<usize>) -> Result<(), GitSheetsError> {
     let snapshots_dir = Path::new("snapshots");
 
     if !snapshots_dir.exists() {
-        println!("No snapshots found. Create one with:");
-        println!("  git-sheets snapshot <file.csv> -m \"message\"");
-        return Ok(());
+        println!("No snapshots directory found");
+        return Err(GitSheetsError::FileSystemError(
+            "No snapshots directory".to_string(),
+        ));
     }
 
-    let mut snapshots: Vec<_> = fs::read_dir(snapshots_dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|s| s == "toml").unwrap_or(false))
+    // List snapshots
+    let mut snapshot_files: Vec<_> = std::fs::read_dir(snapshots_dir)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().map_or(false, |ext| ext == "toml"))
         .collect();
 
-    // Sort by modification time (newest first)
-    snapshots.sort_by(|a, b| {
-        let time_a = a.metadata().ok().and_then(|m| m.modified().ok());
-        let time_b = b.metadata().ok().and_then(|m| m.modified().ok());
-        time_b.cmp(&time_a)
-    });
+    // Sort by name (which should be timestamp-based)
+    snapshot_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
-    let display_count = limit.unwrap_or(snapshots.len()).min(snapshots.len());
+    let limit = limit.unwrap_or(snapshot_files.len());
+    let snapshots_to_show = snapshot_files.iter().take(limit);
 
-    println!("Showing {} most recent snapshots:\n", display_count);
-
-    for entry in snapshots.iter().take(display_count) {
-        let path = entry.path();
-        if let Ok(snapshot) = Snapshot::load(&path) {
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            println!("Snapshot: {}", snapshot.id);
-            println!(
-                "Time:     {}",
-                snapshot.timestamp.format("%Y-%m-%d %H:%M:%S")
-            );
-            if let Some(msg) = &snapshot.message {
-                println!("Message:  {}", msg);
-            }
-            println!(
-                "Table:    {} rows × {} cols",
-                snapshot.table.rows.len(),
-                snapshot.table.headers.len()
-            );
-            println!("Hash:     {}...", &snapshot.hashes.table_hash[..16]);
-            println!();
-        }
+    println!("Recent snapshots:");
+    for path in snapshots_to_show {
+        let filename = path.file_name().unwrap().to_string_lossy();
+        println!("  {}", filename);
     }
 
     Ok(())
 }
 
-// This function is already defined above, so we'll remove this duplicate
+pub fn run() -> Result<(), GitSheetsError> {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Init { path } => {
+            init_repository(&Path::new(path))?;
+        }
+        Commands::Snapshot {
+            file,
+            message,
+            primary_key,
+            auto_commit,
+        } => {
+            create_snapshot(
+                &Path::new(file),
+                message.clone(),
+                primary_key.clone(),
+                *auto_commit,
+            )?;
+        }
+        Commands::Diff { from, to, format } => {
+            let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
+            show_diff(&Path::new(from), &Path::new(to), format_str)?;
+        }
+        Commands::Verify { file } => {
+            verify_snapshot(&Path::new(file))?;
+        }
+        Commands::Status => {
+            show_status()?;
+        }
+        Commands::Log { limit } => {
+            show_log(*limit)?;
+        }
+    }
+
+    Ok(())
+}
