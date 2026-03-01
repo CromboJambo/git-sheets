@@ -3,14 +3,21 @@
 
 use std::fmt;
 use std::io;
+use toml::de::Error as TomlError;
+use toml::ser::Error as TomlSerError;
+use csv::Error as CsvError;
 
 /// Error type for git-sheets operations
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum GitSheetsError {
     /// IO error during file operations
     IoError(io::Error),
-    /// Parsing error when reading files
-    ParseError(serde_json::Error),
+    /// TOML parsing error
+    TomlError(TomlError),
+    /// TOML serialization error
+    TomlSerError(TomlSerError),
+    /// CSV error
+    CsvError(CsvError),
     /// Dependency hash mismatch
     DependencyHashMismatch(String),
     /// Empty table encountered
@@ -23,11 +30,48 @@ pub enum GitSheetsError {
     FileSystemError(String),
 }
 
+impl Clone for GitSheetsError {
+    fn clone(&self) -> Self {
+        match self {
+            GitSheetsError::IoError(e) => GitSheetsError::IoError(e.clone()),
+            GitSheetsError::TomlError(e) => GitSheetsError::TomlError(e.clone()),
+            GitSheetsError::TomlSerError(e) => GitSheetsError::TomlSerError(e.clone()),
+            GitSheetsError::CsvError(e) => GitSheetsError::CsvError(e.clone()),
+            GitSheetsError::DependencyHashMismatch(s) => GitSheetsError::DependencyHashMismatch(s.clone()),
+            GitSheetsError::EmptyTable => GitSheetsError::EmptyTable,
+            GitSheetsError::NoPrimaryKey => GitSheetsError::NoPrimaryKey,
+            GitSheetsError::InvalidRowIndex(s) => GitSheetsError::InvalidRowIndex(s.clone()),
+            GitSheetsError::FileSystemError(s) => GitSheetsError::FileSystemError(s.clone()),
+        }
+    }
+}
+
+impl PartialEq for GitSheetsError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GitSheetsError::TomlError(e1), GitSheetsError::TomlError(e2)) => e1 == e2,
+            (GitSheetsError::TomlSerError(e1), GitSheetsError::TomlSerError(e2)) => e1 == e2,
+            (GitSheetsError::CsvError(e1), GitSheetsError::CsvError(e2)) => e1 == e2,
+            (
+                GitSheetsError::DependencyHashMismatch(s1),
+                GitSheetsError::DependencyHashMismatch(s2),
+            ) => s1 == s2,
+            (GitSheetsError::EmptyTable, GitSheetsError::EmptyTable) => true,
+            (GitSheetsError::NoPrimaryKey, GitSheetsError::NoPrimaryKey) => true,
+            (GitSheetsError::InvalidRowIndex(s1), GitSheetsError::InvalidRowIndex(s2)) => s1 == s2,
+            (GitSheetsError::FileSystemError(s1), GitSheetsError::FileSystemError(s2)) => s1 == s2,
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for GitSheetsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GitSheetsError::IoError(e) => write!(f, "IO Error: {}", e),
-            GitSheetsError::ParseError(e) => write!(f, "Parse Error: {}", e),
+            GitSheetsError::TomlError(e) => write!(f, "TOML Error: {}", e),
+            GitSheetsError::TomlSerError(e) => write!(f, "TOML Serialization Error: {}", e),
+            GitSheetsError::CsvError(e) => write!(f, "CSV Error: {}", e),
             GitSheetsError::DependencyHashMismatch(msg) => {
                 write!(f, "Dependency Hash Mismatch: {}", msg)
             }
@@ -43,7 +87,9 @@ impl std::error::Error for GitSheetsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             GitSheetsError::IoError(e) => Some(e),
-            GitSheetsError::ParseError(e) => Some(e),
+            GitSheetsError::TomlError(e) => Some(e),
+            GitSheetsError::TomlSerError(e) => Some(e),
+            GitSheetsError::CsvError(e) => Some(e),
             GitSheetsError::DependencyHashMismatch(_) => None,
             GitSheetsError::EmptyTable => None,
             GitSheetsError::NoPrimaryKey => None,
@@ -59,9 +105,21 @@ impl From<io::Error> for GitSheetsError {
     }
 }
 
-impl From<serde_json::Error> for GitSheetsError {
-    fn from(error: serde_json::Error) -> Self {
-        GitSheetsError::ParseError(error)
+impl From<TomlError> for GitSheetsError {
+    fn from(error: TomlError) -> Self {
+        GitSheetsError::TomlError(error)
+    }
+}
+
+impl From<TomlSerError> for GitSheetsError {
+    fn from(error: TomlSerError) -> Self {
+        GitSheetsError::TomlSerError(error)
+    }
+}
+
+impl From<CsvError> for GitSheetsError {
+    fn from(error: CsvError) -> Self {
+        GitSheetsError::CsvError(error)
     }
 }
 

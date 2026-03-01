@@ -1,12 +1,12 @@
 // git-sheets: CLI module - command parsing and implementations
 // A tool for Excel sufferers who deserve better
 
-use crate::core::Result;
-use crate::core::{Snapshot, Table};
+use crate::core::Table;
+use crate::core::{GitSheetsError, Result, Snapshot};
+use crate::diff::{Change, SnapshotDiff};
 use clap::{Parser, Subcommand};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::io::Write;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "git-sheets")]
@@ -90,7 +90,7 @@ pub enum DiffFormat {
 // COMMAND IMPLEMENTATIONS
 // ============================================================================
 
-fn init_repository(path: &Path) -> Result<(), GitSheetsError> {
+fn init_repository(path: &Path) -> Result<()> {
     println!("Initializing git-sheets repository at {}", path.display());
 
     // Create necessary directories
@@ -115,7 +115,7 @@ fn create_snapshot(
     message: Option<String>,
     primary_key: Option<String>,
     auto_commit: bool,
-) -> Result<(), GitSheetsError> {
+) -> Result<()> {
     println!("Creating snapshot of {}", file.display());
 
     // Load the table
@@ -147,7 +147,7 @@ fn create_snapshot(
     Ok(())
 }
 
-fn show_diff(from: &Path, to: &Path, format: &str) -> Result<(), GitSheetsError> {
+fn show_diff(from: &Path, to: &Path, format: &str) -> Result<()> {
     println!("Computing diff...");
 
     let snapshot1 = Snapshot::load(from)?;
@@ -177,6 +177,15 @@ fn show_diff(from: &Path, to: &Path, format: &str) -> Result<(), GitSheetsError>
                         println!("@@ -{} +{} @@", row + 1, row + 1);
                         println!("-{}", old);
                         println!("+{}", new);
+                    }
+                    Change::RowModified {
+                        index,
+                        old_data,
+                        new_data,
+                    } => {
+                        println!("@@ -{} +{} @@", index + 1, index + 1);
+                        println!("-{}", old_data.join("\t"));
+                        println!("+{}", new_data.join("\t"));
                     }
                     Change::ColumnAdded { name, index } => {
                         println!("@@ -0 +{} @@", index + 1);
@@ -218,6 +227,13 @@ fn print_diff_text(diff: &SnapshotDiff) {
                 Change::CellChanged { row, col, old, new } => {
                     println!("Cell changed at ({}, {}): {} -> {}", row, col, old, new);
                 }
+                Change::RowModified {
+                    index,
+                    old_data,
+                    new_data,
+                } => {
+                    println!("Row modified at {}: {:?} -> {:?}", index, old_data, new_data);
+                }
                 Change::ColumnAdded { name, index } => {
                     println!("Column added at {}: {}", index, name);
                 }
@@ -229,37 +245,7 @@ fn print_diff_text(diff: &SnapshotDiff) {
     }
 }
 
-fn print_diff_git_style(diff: &SnapshotDiff, from: &Snapshot, to: &Snapshot) {
-    println!("--- {}", from.id);
-    println!("+++ {}", to.id);
-    for change in &diff.changes {
-        match change {
-            Change::RowAdded { index, data } => {
-                println!("@@ -0 +{} @@", index + 1);
-                println!("+{}", data.join("\t"));
-            }
-            Change::RowRemoved { index, data } => {
-                println!("@@ -{} +0 @@", index + 1);
-                println!("-{}", data.join("\t"));
-            }
-            Change::CellChanged { row, col, old, new } => {
-                println!("@@ -{} +{} @@", row + 1, row + 1);
-                println!("-{}", old);
-                println!("+{}", new);
-            }
-            Change::ColumnAdded { name, index } => {
-                println!("@@ -0 +{} @@", index + 1);
-                println!("+{}", name);
-            }
-            Change::ColumnRemoved { name, index } => {
-                println!("@@ -{} +0 @@", index + 1);
-                println!("-{}", name);
-            }
-        }
-    }
-}
-
-fn verify_snapshot(path: &Path) -> Result<(), GitSheetsError> {
+fn verify_snapshot(path: &Path) -> Result<()> {
     println!("Verifying snapshot: {}", path.display());
 
     let snapshot = Snapshot::load(path)?;
@@ -276,7 +262,7 @@ fn verify_snapshot(path: &Path) -> Result<(), GitSheetsError> {
     Ok(())
 }
 
-fn show_status() -> Result<(), GitSheetsError> {
+fn show_status() -> Result<()> {
     println!("Git-sheets status\n");
 
     // Check if git repo exists
@@ -295,7 +281,7 @@ fn show_status() -> Result<(), GitSheetsError> {
     Ok(())
 }
 
-fn show_log(limit: Option<usize>) -> Result<(), GitSheetsError> {
+fn show_log(limit: Option<usize>) -> Result<()> {
     let snapshots_dir = Path::new("snapshots");
 
     if !snapshots_dir.exists() {
@@ -327,7 +313,7 @@ fn show_log(limit: Option<usize>) -> Result<(), GitSheetsError> {
     Ok(())
 }
 
-pub fn run() -> Result<(), GitSheetsError> {
+pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {

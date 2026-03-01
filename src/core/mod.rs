@@ -133,14 +133,14 @@ impl Snapshot {
     }
 
     /// Save snapshot to disk as TOML
-    pub fn save(&self, output_path: &Path) -> Result<(), GitSheetsError> {
+    pub fn save(&self, path: &Path) -> Result<()> {
         let toml_string = toml::to_string_pretty(self)?;
-        fs::write(output_path, toml_string)?;
+        fs::write(path, toml_string)?;
         Ok(())
     }
 
     /// Load snapshot from disk
-    pub fn load(path: &Path) -> Result<Self, GitSheetsError> {
+    pub fn load(path: &Path) -> Result<Snapshot> {
         let content = fs::read_to_string(path)?;
         let snapshot: Snapshot = toml::from_str(&content)?;
         Ok(snapshot)
@@ -153,7 +153,7 @@ impl Snapshot {
     }
 
     /// Verify dependencies of this snapshot
-    pub fn verify_dependencies(&self) -> Result<(), GitSheetsError> {
+    pub fn verify_dependencies(&self) -> Result<()> {
         for dep in &self.dependencies {
             if let Some(dep_path) = &dep.path {
                 let content = fs::read_to_string(dep_path)?;
@@ -183,7 +183,7 @@ impl Snapshot {
 
 impl Table {
     /// Create a table from CSV data
-    pub fn from_csv(path: &Path) -> Result<Self, GitSheetsError> {
+    pub fn from_csv(path: &Path) -> Result<Self> {
         let mut reader = csv::Reader::from_path(path)?;
 
         // Get headers
@@ -218,7 +218,7 @@ impl Table {
     }
 
     /// Get the primary key for a specific row
-    pub fn get_row_key(&self, row_idx: usize) -> Result<Vec<String>, GitSheetsError> {
+    pub fn get_row_key(&self, row_idx: usize) -> Result<Vec<String>> {
         let pk_indices = self
             .primary_key
             .as_ref()
@@ -259,7 +259,7 @@ pub struct GitSheetsRepo {
 
 impl GitSheetsRepo {
     /// Initialize a new git-sheets repository
-    pub fn init(path: PathBuf) -> Result<Self, GitSheetsError> {
+    pub fn init(path: PathBuf) -> Result<GitSheetsRepo> {
         let repo_path = path.canonicalize()?;
 
         // Create directory structure
@@ -276,14 +276,14 @@ impl GitSheetsRepo {
             writeln!(gitignore, "*.json")?;
         }
 
-        Ok(Self {
+        Ok(GitSheetsRepo {
             path: repo_path,
             git_repo: None,
         })
     }
 
     /// Open an existing git-sheets repository
-    pub fn open(path: &str) -> Result<Self, GitSheetsError> {
+    pub fn open(path: &str) -> Result<GitSheetsRepo> {
         let repo_path = PathBuf::from(path).canonicalize()?;
 
         if !repo_path.join("snapshots").exists() {
@@ -292,14 +292,14 @@ impl GitSheetsRepo {
             ));
         }
 
-        Ok(Self {
+        Ok(GitSheetsRepo {
             path: repo_path,
             git_repo: None,
         })
     }
 
     /// Commit a snapshot to git
-    pub fn commit_snapshot(&self, snapshot: &Snapshot) -> Result<(), GitSheetsError> {
+    pub fn commit_snapshot(&self) -> Result<()> {
         // This is a placeholder implementation
         // In a real implementation, this would integrate with git
         Ok(())

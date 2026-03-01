@@ -1,6 +1,7 @@
 // git-sheets: Diff module - computing differences between snapshots
 // A tool for Excel sufferers who deserve better
 
+use crate::core::GitSheetsError;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
