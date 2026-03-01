@@ -1,11 +1,11 @@
 // git-sheets: Core module - fundamental data structures and operations
 // A tool for Excel sufferers who deserve better
 
+use csv::Error as CsvError;
 use std::fmt;
 use std::io;
 use toml::de::Error as TomlError;
 use toml::ser::Error as TomlSerError;
-use csv::Error as CsvError;
 
 /// Error type for git-sheets operations
 #[derive(Debug)]
@@ -33,15 +33,17 @@ pub enum GitSheetsError {
 impl Clone for GitSheetsError {
     fn clone(&self) -> Self {
         match self {
-            GitSheetsError::IoError(e) => GitSheetsError::IoError(e.clone()),
             GitSheetsError::TomlError(e) => GitSheetsError::TomlError(e.clone()),
             GitSheetsError::TomlSerError(e) => GitSheetsError::TomlSerError(e.clone()),
-            GitSheetsError::CsvError(e) => GitSheetsError::CsvError(e.clone()),
-            GitSheetsError::DependencyHashMismatch(s) => GitSheetsError::DependencyHashMismatch(s.clone()),
+            GitSheetsError::DependencyHashMismatch(s) => {
+                GitSheetsError::DependencyHashMismatch(s.clone())
+            }
             GitSheetsError::EmptyTable => GitSheetsError::EmptyTable,
             GitSheetsError::NoPrimaryKey => GitSheetsError::NoPrimaryKey,
             GitSheetsError::InvalidRowIndex(s) => GitSheetsError::InvalidRowIndex(s.clone()),
             GitSheetsError::FileSystemError(s) => GitSheetsError::FileSystemError(s.clone()),
+            // Note: IoError and CsvError don't implement Clone, so we use a workaround
+            _ => std::mem::take(self),
         }
     }
 }
@@ -51,7 +53,6 @@ impl PartialEq for GitSheetsError {
         match (self, other) {
             (GitSheetsError::TomlError(e1), GitSheetsError::TomlError(e2)) => e1 == e2,
             (GitSheetsError::TomlSerError(e1), GitSheetsError::TomlSerError(e2)) => e1 == e2,
-            (GitSheetsError::CsvError(e1), GitSheetsError::CsvError(e2)) => e1 == e2,
             (
                 GitSheetsError::DependencyHashMismatch(s1),
                 GitSheetsError::DependencyHashMismatch(s2),

@@ -173,8 +173,8 @@ fn show_diff(from: &Path, to: &Path, format: &str) -> Result<()> {
                         println!("@@ -{} +0 @@", index + 1);
                         println!("-{}", data.join("\t"));
                     }
-                    Change::CellChanged { row, old, new } => {
-                        println!("@@ -{} +{} @@", row + 1, row + 1);
+                    Change::CellChanged { row, col, old, new } => {
+                        println!("@@ -{} +{} @@", row + 1, col + 1);
                         println!("-{}", old);
                         println!("+{}", new);
                     }
