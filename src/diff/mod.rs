@@ -6,6 +6,11 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Helper function to check if a row exists in another vector
+fn row_exists(row: &[String], target: &[Vec<String>]) -> bool {
+    target.iter().any(|target_row| target_row == row)
+}
+
 // Re-export from core module
 pub use crate::core::{Snapshot, TableHashes};
 
@@ -113,7 +118,7 @@ impl SnapshotDiff {
 
         // Check for added rows
         for (idx, row) in to_rows.iter().enumerate() {
-            if !from_rows.contains(row) {
+            if !row_exists(&row, from_rows) {
                 changes.push(Change::RowAdded {
                     index: idx,
                     data: row.clone(),
@@ -124,7 +129,7 @@ impl SnapshotDiff {
 
         // Check for removed rows
         for (idx, row) in from_rows.iter().enumerate() {
-            if !to_rows.contains(row) {
+            if !row_exists(&row, to_rows) {
                 changes.push(Change::RowRemoved {
                     index: idx,
                     data: row.clone(),
