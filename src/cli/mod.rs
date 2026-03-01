@@ -173,7 +173,7 @@ fn show_diff(from: &Path, to: &Path, format: &str) -> Result<()> {
                         println!("@@ -{} +0 @@", index + 1);
                         println!("-{}", data.join("\t"));
                     }
-                    Change::CellChanged { row, col, old, new } => {
+                    Change::CellChanged { row, old, new } => {
                         println!("@@ -{} +{} @@", row + 1, row + 1);
                         println!("-{}", old);
                         println!("+{}", new);
@@ -232,7 +232,10 @@ fn print_diff_text(diff: &SnapshotDiff) {
                     old_data,
                     new_data,
                 } => {
-                    println!("Row modified at {}: {:?} -> {:?}", index, old_data, new_data);
+                    println!(
+                        "Row modified at {}: {:?} -> {:?}",
+                        index, old_data, new_data
+                    );
                 }
                 Change::ColumnAdded { name, index } => {
                     println!("Column added at {}: {}", index, name);

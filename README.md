@@ -207,16 +207,6 @@ Name = "def456..."
 Amount = "ghi789..."
 ```
 
-### Storage Format Considerations
-
-The current snapshot format uses TOML for metadata and structure, but we're considering alternatives for the tabular data portion. While TOML is readable and well-suited for configuration-like data, it can become verbose for large tabular datasets.
-
-For phase 2, we may consider:
-- Keeping TOML for snapshot metadata (id, timestamp, message, hashes)
-- Using TSV or Parquet for the raw row data to reduce file size
-- This would make snapshots more efficient for large datasets while maintaining the benefits of per-header hashing
-
-
 ### Diff Format (JSON)
 
 ```json

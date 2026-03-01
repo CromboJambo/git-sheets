@@ -4,7 +4,7 @@
 use crate::core::GitSheetsError;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Helper function to check if a row exists in another vector
 fn row_exists(row: &[String], target: &[Vec<String>]) -> bool {
