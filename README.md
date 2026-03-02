@@ -257,6 +257,10 @@ Amount = "ghi789..."
    - Use `--commit` flag for auto-commit
    - Or commit manually with `git commit`
 
+### Workflow Scripts
+
+There's a sample workflow script in `scripts/sheets-session.nu` that demonstrates how to use git-sheets in a typical Excel workflow.
+
 ---
 
 ## Roadmap

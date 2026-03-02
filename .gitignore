@@ -1,29 +1,17 @@
-# Test data (generated during testing)
-*.csv
-!examples/*.csv  # Keep example CSVs if you add them later
+# git-sheets: Ignore configuration files but preserve snapshots
 
-# Generated snapshots and diffs
-snapshots/*.toml
-diffs/*.json
+# Configuration files
+*.toml
+*.json
 
-# But keep the directories themselves
-!snapshots/.gitkeep
-!diffs/.gitkeep
-
-# OS files
+# Temporary files
 .DS_Store
-Thumbs.db
+*.tmp
 
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
+# Log files
+*.log
+
+# Backup files
 *~
 
-# Rust
 target/
-Cargo.lock  # For libraries, keep it; for binaries, optional
-**/*.rs.bk
-*.pdb
-.aider*

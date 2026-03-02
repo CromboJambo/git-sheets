@@ -9,6 +9,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+// Git integration
+use git2;
+
 pub mod errors;
 pub use errors::{GitSheetsError, Result};
 
@@ -115,11 +118,12 @@ impl Snapshot {
     /// Create a new snapshot from a table
     pub fn new(table: Table, message: Option<String>) -> Self {
         let hashes = TableHashes::compute(&table);
-        let id = format!("{}-{}", Utc::now().timestamp(), &hashes.table_hash[..8]);
+        let timestamp = Utc::now();
+        let id = format!("{}-{}", timestamp.timestamp(), &hashes.table_hash[..8]);
 
         Self {
             id,
-            timestamp: Utc::now(),
+            timestamp,
             message,
             table,
             hashes,
@@ -201,9 +205,8 @@ impl Table {
             rows.push(row);
         }
 
-        if rows.is_empty() {
-            return Err(GitSheetsError::EmptyTable);
-        }
+        // Allow empty tables (headers but no data rows) - this is a valid state
+        // that should be tracked as a snapshot
 
         Ok(Self {
             headers,

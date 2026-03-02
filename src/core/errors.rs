@@ -18,6 +18,8 @@ pub enum GitSheetsError {
     TomlSerError(TomlSerError),
     /// CSV error
     CsvError(CsvError),
+    /// Git error
+    GitError(git2::Error),
     /// Dependency hash mismatch
     DependencyHashMismatch(String),
     /// Empty table encountered
@@ -43,6 +45,7 @@ impl PartialEq for GitSheetsError {
             (GitSheetsError::NoPrimaryKey, GitSheetsError::NoPrimaryKey) => true,
             (GitSheetsError::InvalidRowIndex(s1), GitSheetsError::InvalidRowIndex(s2)) => s1 == s2,
             (GitSheetsError::FileSystemError(s1), GitSheetsError::FileSystemError(s2)) => s1 == s2,
+            (GitSheetsError::GitError(e1), GitSheetsError::GitError(e2)) => e1 == e2,
             _ => false,
         }
     }
@@ -55,6 +58,7 @@ impl fmt::Display for GitSheetsError {
             GitSheetsError::TomlError(e) => write!(f, "TOML Error: {}", e),
             GitSheetsError::TomlSerError(e) => write!(f, "TOML Serialization Error: {}", e),
             GitSheetsError::CsvError(e) => write!(f, "CSV Error: {}", e),
+            GitSheetsError::GitError(e) => write!(f, "Git Error: {}", e),
             GitSheetsError::DependencyHashMismatch(msg) => {
                 write!(f, "Dependency Hash Mismatch: {}", msg)
             }
@@ -73,6 +77,7 @@ impl std::error::Error for GitSheetsError {
             GitSheetsError::TomlError(e) => Some(e),
             GitSheetsError::TomlSerError(e) => Some(e),
             GitSheetsError::CsvError(e) => Some(e),
+            GitSheetsError::GitError(e) => Some(e),
             GitSheetsError::DependencyHashMismatch(_) => None,
             GitSheetsError::EmptyTable => None,
             GitSheetsError::NoPrimaryKey => None,
@@ -103,6 +108,12 @@ impl From<TomlSerError> for GitSheetsError {
 impl From<CsvError> for GitSheetsError {
     fn from(error: CsvError) -> Self {
         GitSheetsError::CsvError(error)
+    }
+}
+
+impl From<git2::Error> for GitSheetsError {
+    fn from(error: git2::Error) -> Self {
+        GitSheetsError::GitError(error)
     }
 }
 

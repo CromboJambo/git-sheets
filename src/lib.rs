@@ -4,7 +4,6 @@
 pub mod cli;
 pub mod core;
 pub mod diff;
-pub mod hash;
 
 // Re-export core types for convenience
 pub use core::{Dependency, GitSheetsError, Result, Snapshot, Table, TableHashes};

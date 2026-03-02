@@ -3,13 +3,9 @@
 
 use crate::core::GitSheetsError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-
-/// Helper function to check if a row exists in another vector
-fn row_exists(row: &[String], target: &[Vec<String>]) -> bool {
-    target.iter().any(|target_row| target_row == row)
-}
 
 // Re-export from core module
 pub use crate::core::{Snapshot, TableHashes};
@@ -112,72 +108,112 @@ impl SnapshotDiff {
             }
         }
 
-        // Compare rows
+        // Compare rows using primary key-based identification
         let from_rows = &from.table.rows;
         let to_rows = &to.table.rows;
 
-        // Check for added rows
-        for (idx, row) in to_rows.iter().enumerate() {
-            if !row_exists(&row, from_rows) {
-                changes.push(Change::RowAdded {
-                    index: idx,
-                    data: row.clone(),
-                });
-                summary.rows_added += 1;
+        // Create lookup maps for rows by primary key
+        let mut from_row_lookup: HashMap<Vec<String>, usize> = HashMap::new();
+        let mut to_row_lookup: HashMap<Vec<String>, usize> = HashMap::new();
+
+        if let Some(pk_indices) = &from.table.primary_key {
+            for (idx, row) in from_rows.iter().enumerate() {
+                let pk_values: Vec<String> = pk_indices
+                    .iter()
+                    .filter_map(|&i| row.get(i).cloned())
+                    .collect();
+                if !pk_values.is_empty() {
+                    from_row_lookup.insert(pk_values, idx);
+                }
             }
         }
 
-        // Check for removed rows
-        for (idx, row) in from_rows.iter().enumerate() {
-            if !row_exists(&row, to_rows) {
-                changes.push(Change::RowRemoved {
-                    index: idx,
-                    data: row.clone(),
-                });
-                summary.rows_removed += 1;
+        if let Some(pk_indices) = &to.table.primary_key {
+            for (idx, row) in to_rows.iter().enumerate() {
+                let pk_values: Vec<String> = pk_indices
+                    .iter()
+                    .filter_map(|&i| row.get(i).cloned())
+                    .collect();
+                if !pk_values.is_empty() {
+                    to_row_lookup.insert(pk_values, idx);
+                }
             }
         }
 
-        // Check for modified rows
-        let mut row_idx = 0;
-        while row_idx < from_rows.len() && row_idx < to_rows.len() {
-            let from_row = &from_rows[row_idx];
-            let to_row = &to_rows[row_idx];
-
-            if from_row != to_row {
-                changes.push(Change::RowModified {
-                    index: row_idx,
-                    old_data: from_row.clone(),
-                    new_data: to_row.clone(),
-                });
-                summary.rows_modified += 1;
+        // Check for added rows (rows not in from but in to)
+        let mut added_rows = Vec::new();
+        for (pk_values, to_idx) in &to_row_lookup {
+            if !from_row_lookup.contains_key(pk_values) {
+                added_rows.push((to_idx, to_rows[*to_idx].clone()));
             }
-
-            row_idx += 1;
         }
 
-        // Check for cell changes
-        let mut row_idx = 0;
-        while row_idx < from_rows.len() && row_idx < to_rows.len() {
-            let from_row = &from_rows[row_idx];
-            let to_row = &to_rows[row_idx];
+        // Check for removed rows (rows not in to but in from)
+        let mut removed_rows = Vec::new();
+        for (pk_values, from_idx) in &from_row_lookup {
+            if !to_row_lookup.contains_key(pk_values) {
+                removed_rows.push((from_idx, from_rows[*from_idx].clone()));
+            }
+        }
 
-            if from_row != to_row {
-                for (col_idx, (from_cell, to_cell)) in
-                    from_row.iter().zip(to_row.iter()).enumerate()
-                {
-                    if from_cell != to_cell {
-                        changes.push(Change::CellChanged {
-                            row: row_idx,
-                            col: col_idx,
-                            old: from_cell.clone(),
-                            new: to_cell.clone(),
-                        });
-                    }
+        // Check for modified rows (rows with same primary key but different content)
+        let mut modified_rows = Vec::new();
+        for (pk_values, from_idx) in &from_row_lookup {
+            if let Some(to_idx) = to_row_lookup.get(pk_values) {
+                if from_rows[*from_idx] != to_rows[*to_idx] {
+                    modified_rows.push((from_idx, to_idx));
+                }
+            }
+        }
+
+        // Add added rows
+        for (index, data) in added_rows {
+            changes.push(Change::RowAdded {
+                index: *index,
+                data,
+            });
+            summary.rows_added += 1;
+        }
+
+        // Add removed rows
+        for (index, data) in removed_rows {
+            changes.push(Change::RowRemoved {
+                index: *index,
+                data,
+            });
+            summary.rows_removed += 1;
+        }
+
+        // Add modified rows - but avoid double-counting by only adding row modification
+        // if there are no other changes for this row (cell changes would be handled separately)
+        for (from_idx, to_idx) in modified_rows {
+            // Check if this row has cell-level changes
+            let mut has_cell_changes = false;
+            for (col_idx, (from_cell, to_cell)) in from_rows[*from_idx]
+                .iter()
+                .zip(to_rows[*to_idx].iter())
+                .enumerate()
+            {
+                if from_cell != to_cell {
+                    changes.push(Change::CellChanged {
+                        row: *from_idx,
+                        col: col_idx,
+                        old: from_cell.clone(),
+                        new: to_cell.clone(),
+                    });
+                    has_cell_changes = true;
                 }
             }
 
-            row_idx += 1;
+            // Only add RowModified if there are no cell changes (avoid double counting)
+            if !has_cell_changes {
+                changes.push(Change::RowModified {
+                    index: *from_idx,
+                    old_data: from_rows[*from_idx].clone(),
+                    new_data: to_rows[*to_idx].clone(),
+                });
+                summary.rows_modified += 1;
+            }
         }
 
         Ok(Self {

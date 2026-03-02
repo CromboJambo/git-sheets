@@ -19,38 +19,7 @@ pub struct Cli {
 impl Cli {
     /// Execute the command
     pub fn execute(&self) -> Result<()> {
-        match &self.command {
-            Commands::Init { path } => {
-                crate::cli::init_repository(&Path::new(path))?;
-            }
-            Commands::Snapshot {
-                file,
-                message,
-                primary_key,
-                auto_commit,
-            } => {
-                crate::cli::create_snapshot(
-                    &Path::new(file),
-                    message.clone(),
-                    primary_key.clone(),
-                    *auto_commit,
-                )?;
-            }
-            Commands::Diff { from, to, format } => {
-                let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
-                crate::cli::show_diff(&Path::new(from), &Path::new(to), format_str)?;
-            }
-            Commands::Verify { file } => {
-                crate::cli::verify_snapshot(&Path::new(file))?;
-            }
-            Commands::Status => {
-                crate::cli::show_status()?;
-            }
-            Commands::Log { limit } => {
-                crate::cli::show_log(*limit)?;
-            }
-        }
-        Ok(())
+        run()
     }
 }
 
@@ -178,8 +147,36 @@ fn create_snapshot(
     println!("Snapshot created: {}", snapshot.id);
 
     if auto_commit {
-        // Placeholder for git commit
-        println!("Auto-commit would be performed here");
+        // Perform actual git commit
+        let repo_path = Path::new(".");
+        match git2::Repository::open(repo_path) {
+            Ok(repo) => {
+                let mut index = repo.index()?;
+
+                // Add the snapshot file to the index
+                index.add_path(&snapshot_path)?;
+                index.write_tree()?;
+
+                // Create commit
+                let tree_id = index.write_tree()?;
+                let tree = repo.find_tree(tree_id)?;
+                let author = git2::Signature::now("git-sheets", "git-sheets@localhost")?;
+                let committer = author.clone();
+                let commit_id = repo.commit(
+                    Some("HEAD"),
+                    &author,
+                    &committer,
+                    &format!("Snapshot: {}", snapshot.id),
+                    &tree,
+                    &[],
+                )?;
+
+                println!("Auto-commit performed: {}", commit_id.to_string());
+            }
+            Err(_) => {
+                eprintln!("Warning: Git repository not found, auto-commit skipped");
+            }
+        }
     }
 
     Ok(())
@@ -318,6 +315,27 @@ fn show_status() -> Result<()> {
     println!("Repository: {}", repo_path.display());
     println!("Snapshots directory: snapshots/");
     println!("Diffs directory: diffs/");
+
+    // Check if git repository exists
+    // Check if git repository exists
+    match git2::Repository::open(repo_path) {
+        Ok(repo) => match repo.head() {
+            Ok(head) => {
+                println!(
+                    "Git HEAD: {}",
+                    head.target()
+                        .map(|oid| oid.to_string())
+                        .unwrap_or_else(|| "None".to_string())
+                );
+            }
+            Err(_) => {
+                println!("No Git HEAD");
+            }
+        },
+        Err(_) => {
+            println!("No Git repository found");
+        }
+    }
 
     Ok(())
 }
