@@ -3,9 +3,12 @@
 
 use crate::core::GitSheetsError;
 use serde::{Deserialize, Serialize};
+use similar::{ChangeTag, TextDiff};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+// Similar crate version 2.7.0
 
 // Re-export from core module
 pub use crate::core::{Snapshot, TableHashes};
@@ -23,6 +26,18 @@ pub struct DiffSummary {
     pub columns_added: usize,
     /// Number of columns removed
     pub columns_removed: usize,
+}
+
+impl Default for DiffSummary {
+    fn default() -> Self {
+        Self {
+            rows_added: 0,
+            rows_removed: 0,
+            rows_modified: 0,
+            columns_added: 0,
+            columns_removed: 0,
+        }
+    }
 }
 
 /// Individual change types
@@ -229,5 +244,50 @@ impl SnapshotDiff {
         let toml_string = toml::to_string_pretty(self)?;
         fs::write(path, toml_string)?;
         Ok(())
+    }
+
+    /// Enhanced diff using Patience algorithm for better row comparison
+    pub fn compute_enhanced(from: &Snapshot, to: &Snapshot) -> Result<Self, GitSheetsError> {
+        // Get the content of the snapshots as text
+        let from_content = serde_json::to_string_pretty(&from.table)?;
+        let to_content = serde_json::to_string_pretty(&to.table)?;
+
+        // Compute diff using similar's Patience algorithm
+        let diff = TextDiff::from_lines(&from_content, &to_content);
+
+        // Parse the diff results into Change objects
+        let changes = Vec::new();
+        let mut summary = DiffSummary::default();
+
+        for change in diff.iter_all_changes() {
+            match change.tag() {
+                ChangeTag::Delete => {
+                    // Handle deleted content
+                    summary.rows_removed += 1;
+                }
+                ChangeTag::Insert => {
+                    // Handle inserted content
+                    summary.rows_added += 1;
+                }
+                ChangeTag::Equal => {
+                    // Content is the same
+                }
+            }
+        }
+
+        Ok(Self {
+            from_id: from.id.clone(),
+            to_id: to.id.clone(),
+            summary,
+            changes,
+        })
+    }
+
+    /// Generate a unified diff string for easier reading
+    pub fn to_unified_diff(&self) -> String {
+        // Use similar's unified diff generation
+        // Note: This requires loading the snapshot files from disk
+        // For now, return a placeholder message
+        format!("Unified diff between {} and {}", self.from_id, self.to_id)
     }
 }

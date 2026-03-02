@@ -1,11 +1,4 @@
-// git-sheets: Core module - fundamental data structures and operations
-// A tool for Excel sufferers who deserve better
 
-use csv::Error as CsvError;
-use std::fmt;
-use std::io;
-use toml::de::Error as TomlError;
-use toml::ser::Error as TomlSerError;
 
 /// Error type for git-sheets operations
 #[derive(Debug)]
@@ -16,6 +9,8 @@ pub enum GitSheetsError {
     TomlError(TomlError),
     /// TOML serialization error
     TomlSerError(TomlSerError),
+    /// JSON parsing error
+    JsonError(serde_json::Error),
     /// CSV error
     CsvError(CsvError),
     /// Git error
@@ -57,15 +52,17 @@ impl fmt::Display for GitSheetsError {
             GitSheetsError::IoError(e) => write!(f, "IO Error: {}", e),
             GitSheetsError::TomlError(e) => write!(f, "TOML Error: {}", e),
             GitSheetsError::TomlSerError(e) => write!(f, "TOML Serialization Error: {}", e),
+            GitSheetsError::JsonError(e) => write!(f, "JSON Error: {}", e),
             GitSheetsError::CsvError(e) => write!(f, "CSV Error: {}", e),
             GitSheetsError::GitError(e) => write!(f, "Git Error: {}", e),
             GitSheetsError::DependencyHashMismatch(msg) => {
                 write!(f, "Dependency Hash Mismatch: {}", msg)
-            }
+            },
             GitSheetsError::EmptyTable => write!(f, "Empty Table"),
             GitSheetsError::NoPrimaryKey => write!(f, "No Primary Key"),
             GitSheetsError::InvalidRowIndex(msg) => write!(f, "Invalid Row Index: {}", msg),
             GitSheetsError::FileSystemError(msg) => write!(f, "File System Error: {}", msg),
+            GitSheetsError::JsonError(e) => write!(f, "JSON Error: {}", e),
         }
     }
 }
@@ -83,6 +80,7 @@ impl std::error::Error for GitSheetsError {
             GitSheetsError::NoPrimaryKey => None,
             GitSheetsError::InvalidRowIndex(_) => None,
             GitSheetsError::FileSystemError(_) => None,
+            GitSheetsError::JsonError(e) => Some(e),
         }
     }
 }
@@ -112,8 +110,21 @@ impl From<CsvError> for GitSheetsError {
 }
 
 impl From<git2::Error> for GitSheetsError {
-    fn from(error: git2::Error) -> Self {
-        GitSheetsError::GitError(error)
+   impl From<git2::Error> for GitSheetsError {
+       fn from(error: git2::Error) -> Self {
+           GitSheetsError::GitError(error)
+       }
+   }
+
+   impl From<serde_json::Error> for GitSheetsError {
+       fn from(error: serde_json::Error) -> Self {
+           GitSheetsError::JsonError(error)
+       }
+   }
+
+impl From<serde_json::Error> for GitSheetsError {
+    fn from(error: serde_json::Error) -> Self {
+        GitSheetsError::JsonError(error)
     }
 }
 

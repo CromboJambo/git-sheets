@@ -313,4 +313,31 @@ impl GitSheetsRepo {
         // Placeholder implementation
         false
     }
+
+    /// List all snapshots in the repository
+    pub fn list_snapshots(&self) -> Result<Vec<Snapshot>> {
+        use walkdir::WalkDir;
+
+        let mut snapshots = Vec::new();
+        let snapshot_dir = self.path.join("snapshots");
+
+        for entry in WalkDir::new(&snapshot_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "toml") {
+                match Snapshot::load(path) {
+                    Ok(snapshot) => snapshots.push(snapshot),
+                    Err(e) => {
+                        eprintln!("Warning: Could not load snapshot from {:?}: {}", path, e);
+                    }
+                }
+            }
+        }
+
+        Ok(snapshots)
+    }
 }
