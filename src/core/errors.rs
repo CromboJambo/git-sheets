@@ -1,16 +1,21 @@
+use std::fmt;
 
+use csv::Error as CsvError;
+use serde_json::Error as JsonError;
+use toml::de::Error as TomlError;
+use toml::ser::Error as TomlSerError;
 
 /// Error type for git-sheets operations
 #[derive(Debug)]
 pub enum GitSheetsError {
     /// IO error during file operations
-    IoError(io::Error),
+    IoError(std::io::Error),
     /// TOML parsing error
     TomlError(TomlError),
     /// TOML serialization error
     TomlSerError(TomlSerError),
     /// JSON parsing error
-    JsonError(serde_json::Error),
+    JsonError(JsonError),
     /// CSV error
     CsvError(CsvError),
     /// Git error
@@ -27,42 +32,22 @@ pub enum GitSheetsError {
     FileSystemError(String),
 }
 
-impl PartialEq for GitSheetsError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (GitSheetsError::TomlError(e1), GitSheetsError::TomlError(e2)) => e1 == e2,
-            (GitSheetsError::TomlSerError(e1), GitSheetsError::TomlSerError(e2)) => e1 == e2,
-            (
-                GitSheetsError::DependencyHashMismatch(s1),
-                GitSheetsError::DependencyHashMismatch(s2),
-            ) => s1 == s2,
-            (GitSheetsError::EmptyTable, GitSheetsError::EmptyTable) => true,
-            (GitSheetsError::NoPrimaryKey, GitSheetsError::NoPrimaryKey) => true,
-            (GitSheetsError::InvalidRowIndex(s1), GitSheetsError::InvalidRowIndex(s2)) => s1 == s2,
-            (GitSheetsError::FileSystemError(s1), GitSheetsError::FileSystemError(s2)) => s1 == s2,
-            (GitSheetsError::GitError(e1), GitSheetsError::GitError(e2)) => e1 == e2,
-            _ => false,
-        }
-    }
-}
-
 impl fmt::Display for GitSheetsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GitSheetsError::IoError(e) => write!(f, "IO Error: {}", e),
-            GitSheetsError::TomlError(e) => write!(f, "TOML Error: {}", e),
-            GitSheetsError::TomlSerError(e) => write!(f, "TOML Serialization Error: {}", e),
-            GitSheetsError::JsonError(e) => write!(f, "JSON Error: {}", e),
-            GitSheetsError::CsvError(e) => write!(f, "CSV Error: {}", e),
-            GitSheetsError::GitError(e) => write!(f, "Git Error: {}", e),
+            GitSheetsError::IoError(e) => write!(f, "IO Error: {e}"),
+            GitSheetsError::TomlError(e) => write!(f, "TOML Error: {e}"),
+            GitSheetsError::TomlSerError(e) => write!(f, "TOML Serialization Error: {e}"),
+            GitSheetsError::JsonError(e) => write!(f, "JSON Error: {e}"),
+            GitSheetsError::CsvError(e) => write!(f, "CSV Error: {e}"),
+            GitSheetsError::GitError(e) => write!(f, "Git Error: {e}"),
             GitSheetsError::DependencyHashMismatch(msg) => {
-                write!(f, "Dependency Hash Mismatch: {}", msg)
-            },
+                write!(f, "Dependency Hash Mismatch: {msg}")
+            }
             GitSheetsError::EmptyTable => write!(f, "Empty Table"),
             GitSheetsError::NoPrimaryKey => write!(f, "No Primary Key"),
-            GitSheetsError::InvalidRowIndex(msg) => write!(f, "Invalid Row Index: {}", msg),
-            GitSheetsError::FileSystemError(msg) => write!(f, "File System Error: {}", msg),
-            GitSheetsError::JsonError(e) => write!(f, "JSON Error: {}", e),
+            GitSheetsError::InvalidRowIndex(msg) => write!(f, "Invalid Row Index: {msg}"),
+            GitSheetsError::FileSystemError(msg) => write!(f, "File System Error: {msg}"),
         }
     }
 }
@@ -75,18 +60,18 @@ impl std::error::Error for GitSheetsError {
             GitSheetsError::TomlSerError(e) => Some(e),
             GitSheetsError::CsvError(e) => Some(e),
             GitSheetsError::GitError(e) => Some(e),
-            GitSheetsError::DependencyHashMismatch(_) => None,
-            GitSheetsError::EmptyTable => None,
-            GitSheetsError::NoPrimaryKey => None,
-            GitSheetsError::InvalidRowIndex(_) => None,
-            GitSheetsError::FileSystemError(_) => None,
             GitSheetsError::JsonError(e) => Some(e),
+            GitSheetsError::DependencyHashMismatch(_)
+            | GitSheetsError::EmptyTable
+            | GitSheetsError::NoPrimaryKey
+            | GitSheetsError::InvalidRowIndex(_)
+            | GitSheetsError::FileSystemError(_) => None,
         }
     }
 }
 
-impl From<io::Error> for GitSheetsError {
-    fn from(error: io::Error) -> Self {
+impl From<std::io::Error> for GitSheetsError {
+    fn from(error: std::io::Error) -> Self {
         GitSheetsError::IoError(error)
     }
 }
@@ -115,8 +100,8 @@ impl From<git2::Error> for GitSheetsError {
     }
 }
 
-impl From<serde_json::Error> for GitSheetsError {
-    fn from(error: serde_json::Error) -> Self {
+impl From<JsonError> for GitSheetsError {
+    fn from(error: JsonError) -> Self {
         GitSheetsError::JsonError(error)
     }
 }
