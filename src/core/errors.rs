@@ -110,17 +110,10 @@ impl From<CsvError> for GitSheetsError {
 }
 
 impl From<git2::Error> for GitSheetsError {
-   impl From<git2::Error> for GitSheetsError {
-       fn from(error: git2::Error) -> Self {
-           GitSheetsError::GitError(error)
-       }
-   }
-
-   impl From<serde_json::Error> for GitSheetsError {
-       fn from(error: serde_json::Error) -> Self {
-           GitSheetsError::JsonError(error)
-       }
-   }
+    fn from(error: git2::Error) -> Self {
+        GitSheetsError::GitError(error)
+    }
+}
 
 impl From<serde_json::Error> for GitSheetsError {
     fn from(error: serde_json::Error) -> Self {
