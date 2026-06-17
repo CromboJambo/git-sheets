@@ -19,7 +19,22 @@ pub struct Cli {
 impl Cli {
     /// Execute the command
     pub fn execute(&self) -> Result<()> {
-        run()
+        match &self.command {
+            Commands::Init { path } => init_repository(&Path::new(path)),
+            Commands::Snapshot {
+                file,
+                message,
+                primary_key,
+                auto_commit,
+            } => create_snapshot(file, message.clone(), primary_key.clone(), *auto_commit),
+            Commands::Diff { from, to, format } => {
+                let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
+                show_diff(&Path::new(from), &Path::new(to), format_str)
+            }
+            Commands::Verify { file } => verify_snapshot(&Path::new(file)),
+            Commands::Status => show_status(),
+            Commands::Log { limit } => show_log(*limit),
+        }
     }
 }
 
@@ -361,50 +376,14 @@ fn show_log(limit: Option<usize>) -> Result<()> {
     snapshot_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
     let limit = limit.unwrap_or(snapshot_files.len());
-    let snapshots_to_show = snapshot_files.iter().take(limit);
+    let total = snapshot_files.len();
+    let start = total.saturating_sub(limit);
+    let snapshots_to_show = snapshot_files.iter().skip(start);
 
     println!("Recent snapshots:");
     for path in snapshots_to_show {
         let filename = path.file_name().unwrap().to_string_lossy();
         println!("  {}", filename);
-    }
-
-    Ok(())
-}
-
-pub fn run() -> Result<()> {
-    let cli = Cli::parse();
-
-    match &cli.command {
-        Commands::Init { path } => {
-            init_repository(&Path::new(path))?;
-        }
-        Commands::Snapshot {
-            file,
-            message,
-            primary_key,
-            auto_commit,
-        } => {
-            create_snapshot(
-                &Path::new(file),
-                message.clone(),
-                primary_key.clone(),
-                *auto_commit,
-            )?;
-        }
-        Commands::Diff { from, to, format } => {
-            let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
-            show_diff(&Path::new(from), &Path::new(to), format_str)?;
-        }
-        Commands::Verify { file } => {
-            verify_snapshot(&Path::new(file))?;
-        }
-        Commands::Status => {
-            show_status()?;
-        }
-        Commands::Log { limit } => {
-            show_log(*limit)?;
-        }
     }
 
     Ok(())
