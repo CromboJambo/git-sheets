@@ -3,7 +3,6 @@
 
 use crate::core::GitSheetsError;
 use serde::{Deserialize, Serialize};
-use similar::{ChangeTag, TextDiff};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -248,45 +247,17 @@ impl SnapshotDiff {
 
     /// Enhanced diff using Patience algorithm for better row comparison
     pub fn compute_enhanced(from: &Snapshot, to: &Snapshot) -> Result<Self, GitSheetsError> {
-        // Get the content of the snapshots as text
-        let from_content = serde_json::to_string_pretty(&from.table)?;
-        let to_content = serde_json::to_string_pretty(&to.table)?;
-
-        // Compute diff using similar's Patience algorithm
-        let diff = TextDiff::from_lines(&from_content, &to_content);
-
-        // Parse the diff results into Change objects
-        let changes = Vec::new();
-        let mut summary = DiffSummary::default();
-
-        for change in diff.iter_all_changes() {
-            match change.tag() {
-                ChangeTag::Delete => {
-                    // Handle deleted content
-                    summary.rows_removed += 1;
-                }
-                ChangeTag::Insert => {
-                    // Handle inserted content
-                    summary.rows_added += 1;
-                }
-                ChangeTag::Equal => {
-                    // Content is the same
-                }
-            }
-        }
-
-        Ok(Self {
-            from_id: from.id.clone(),
-            to_id: to.id.clone(),
-            summary,
-            changes,
-        })
+        // Use the base compute which does proper primary-key-aware row matching.
+        // For tabular data with primary keys, the row-based approach is more accurate
+        // than line-based text diffing.
+        Self::compute(from, to)
     }
 
     /// Generate a unified diff string for easier reading
     pub fn to_unified_diff(&self) -> String {
-        // Use similar's unified diff generation
-        // Note: This requires loading the snapshot files from disk
+        // Generate a simple text representation.
+        // A proper unified diff would require loading snapshot files from disk
+        // and comparing row-by-row.
         // For now, return a placeholder message
         format!("Unified diff between {} and {}", self.from_id, self.to_id)
     }
