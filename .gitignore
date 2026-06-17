@@ -15,3 +15,5 @@
 *~
 
 target/
+knowledge.db
+guard.db
