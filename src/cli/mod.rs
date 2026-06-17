@@ -26,7 +26,7 @@ impl Cli {
                 message,
                 primary_key,
                 auto_commit,
-            } => create_snapshot(file, message.clone(), primary_key.clone(), *auto_commit),
+            } => create_snapshot(Path::new(file), message.clone(), primary_key.clone(), *auto_commit),
             Commands::Diff { from, to, format } => {
                 let format_str = format.as_ref().map(|s| s.as_str()).unwrap_or("text");
                 show_diff(&Path::new(from), &Path::new(to), format_str)
