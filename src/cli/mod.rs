@@ -206,8 +206,8 @@ fn show_diff(from: &Path, to: &Path, format: &str) -> Result<()> {
 
     match format {
         "json" => {
-            diff.save(&Path::new("diffs").join(format!("{}.json", diff.from_id)))?;
-            println!("Diff saved as JSON");
+            let json_string = serde_json::to_string_pretty(&diff)?;
+            println!("{json_string}");
         }
         "git" => {
             // Print git-style diff
