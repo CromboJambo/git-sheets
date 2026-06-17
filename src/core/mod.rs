@@ -295,23 +295,84 @@ impl GitSheetsRepo {
             ));
         }
 
+        let git_repo = git2::Repository::open(&repo_path).ok();
+
         Ok(GitSheetsRepo {
             path: repo_path,
-            git_repo: None,
+            git_repo,
         })
     }
 
     /// Commit a snapshot to git
+    /// Commit a snapshot to git
     pub fn commit_snapshot(&self) -> Result<()> {
-        // This is a placeholder implementation
-        // In a real implementation, this would integrate with git
+        let repo = self.git_repo.as_ref().ok_or_else(|| {
+            GitSheetsError::FileSystemError("No git repository found".to_string())
+        })?;
+
+        let mut index = repo.index()?;
+
+        // Add snapshots and diffs directories
+        for dir in &["snapshots", "diffs"] {
+            let dir_path = self.path.join(dir);
+            if dir_path.exists() {
+                for entry in std::fs::read_dir(&dir_path)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.is_file() {
+                        let rel_path = path.strip_prefix(&self.path).map_err(|e| {
+                            GitSheetsError::FileSystemError(format!(
+                                "Failed to strip prefix: {e}"
+                            ))
+                        })?;
+                        index.add_path(rel_path)?;
+                    }
+                }
+            }
+        }
+
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+
+        // Find parent commit
+        let parent = repo.head().ok().and_then(|h| h.target());
+        let parents: Vec<git2::Commit> = parent
+            .map(|oid| {
+                repo.find_commit(oid)
+                    .ok()
+                    .map(|c| vec![c])
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        let author = git2::Signature::now("git-sheets", "git-sheets@localhost")?;
+        let committer = author.clone();
+
+        repo.commit(
+            Some("HEAD"),
+            &author,
+            &committer,
+            "Update snapshots and diffs",
+            &tree,
+            &parents.iter().collect::<Vec<_>>(),
+        )?;
+
         Ok(())
     }
 
     /// Check if there are uncommitted changes
     pub fn has_changes(&self) -> bool {
-        // Placeholder implementation
-        false
+        let repo = match self.git_repo.as_ref() {
+            Some(r) => r,
+            None => return false,
+        };
+
+        let mut status_opts = git2::StatusOptions::new();
+        status_opts.include_untracked(true);
+        match repo.statuses(Some(&mut status_opts)) {
+            Ok(statuses) => !statuses.is_empty(),
+            Err(_) => false,
+        }
     }
 
     /// List all snapshots in the repository
