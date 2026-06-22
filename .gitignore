@@ -1,6 +1,4 @@
 # git-sheets: Ignore configuration files but preserve snapshots
-
-# Configuration files (except in snapshots/ and diffs/)
 *.toml
 !snapshots/*.toml
 !diffs/*.toml
@@ -20,3 +18,4 @@
 target/
 knowledge.db
 guard.db
+Cargo.lock
